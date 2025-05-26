@@ -30,6 +30,21 @@ public class YcsbCommon {
   static final String USER_COUNT = "user_count"; // 新規追加: ユーザー数設定パラメータ
   // マルチユーザー認証用の共通パスワードベース
   static final String PASSWORD_BASE = "password";
+
+  // ABAC関連の設定パラメータ
+  static final String ABAC_ENABLED = "abac_enabled";
+  static final String ABAC_ATTRIBUTE_TYPE = "abac_attribute_type";
+  static final String ABAC_STRATEGY = "abac_strategy";
+  static final String ABAC_ATTRIBUTE_VALUES = "abac_attribute_values";
+
+  // ABAC属性タイプの定数
+  static final String ATTRIBUTE_TYPE_LEVEL = "level";
+  static final String ATTRIBUTE_TYPE_COMPARTMENT = "compartment";
+  static final String ATTRIBUTE_TYPE_GROUP = "group";
+
+  // ABAC戦略の定数
+  static final String STRATEGY_RANDOM = "random";
+  static final String STRATEGY_LOAD_BALANCED = "load_balanced";
   private static final int CHAR_START = 32; // [space]
   private static final int CHAR_STOP = 126; // [~]
   private static final char[] CHAR_SYMBOLS = new char[1 + CHAR_STOP - CHAR_START];
@@ -136,6 +151,38 @@ public class YcsbCommon {
    */
   public static String getPassword(int index) {
     return PASSWORD_BASE + index;
+  }
+
+  // ABAC設定取得メソッド
+  public static boolean isAbacEnabled(Config config) {
+    return config.getUserBoolean(CONFIG_NAME, ABAC_ENABLED, false);
+  }
+
+  public static String getAbacAttributeType(Config config) {
+    return config.getUserString(CONFIG_NAME, ABAC_ATTRIBUTE_TYPE, ATTRIBUTE_TYPE_LEVEL);
+  }
+
+  public static String getAbacStrategy(Config config) {
+    return config.getUserString(CONFIG_NAME, ABAC_STRATEGY, STRATEGY_RANDOM);
+  }
+
+  public static String[] getAbacAttributeValues(Config config) {
+    String valuesStr = config.getUserString(CONFIG_NAME, ABAC_ATTRIBUTE_VALUES, "");
+    if (valuesStr.isEmpty()) {
+      // デフォルト値を属性タイプに応じて設定
+      String attributeType = getAbacAttributeType(config);
+      switch (attributeType) {
+        case ATTRIBUTE_TYPE_LEVEL:
+          return new String[] { "public", "confidential", "secret" };
+        case ATTRIBUTE_TYPE_COMPARTMENT:
+          return new String[] { "hr", "sales", "engineering" };
+        case ATTRIBUTE_TYPE_GROUP:
+          return new String[] { "team_a", "team_b", "team_c" };
+        default:
+          return new String[] { "public", "confidential", "secret" };
+      }
+    }
+    return valuesStr.split(",");
   }
 
   // This method is taken from benchbase.

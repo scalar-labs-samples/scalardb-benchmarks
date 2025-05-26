@@ -65,6 +65,16 @@
 - ⬜ カスタムYCSBワークロードの定義機能
 - ⬜ マルチユーザーモードの他のワークロード対応（A、F）
 
+### ABACマルチユーザーベンチマーク（新規実装完了）
+- ✅ AttributeAssignmentStrategyインターフェースの実装
+- ✅ RandomStrategy（ランダム属性割り当て戦略）の実装
+- ✅ LoadBalancedStrategy（負荷分散属性割り当て戦略）の実装
+- ✅ MultiUserAbacWorkloadC（ABAC対応ワークロードC）の実装
+- ✅ MultiUserAbacLoader（ABAC対応ローダー）の実装
+- ✅ YcsbCommonへのABAC設定パラメータ追加
+- ✅ ycsb-multi-user-abac-benchmark-config.toml設定ファイルの作成
+- ✅ 全体的なビルドテスト完了
+
 ### 拡張機能
 - ⬜ グラフィカルな結果レポート
 - ⬜ より詳細なリソース使用状況の監視
