@@ -1,132 +1,35 @@
-# YCSB Multi-User ABAC Benchmark Configuration
-# ScalarDBのABAC機能による性能影響を測定するためのベンチマーク設定
+[modules]
+[modules.preprocessor]
+name = "com.scalar.db.benchmarks.ycsb.MultiUserAbacLoader"
+path = "./build/libs/scalardb-benchmarks-all.jar"
+[modules.processor]
+name = "com.scalar.db.benchmarks.ycsb.MultiUserAbacWorkloadC"
+path = "./build/libs/scalardb-benchmarks-all.jar"
+[modules.postprocessor]
+name = "com.scalar.db.benchmarks.ycsb.YcsbReporter"
+path = "./build/libs/scalardb-benchmarks-all.jar"
 
-# kelpie settings
-duration = "1h"
-warmup_duration = "5m"
-# You may want to add more reports to get more infomation
-reports = ["summary"]
+[common]
+concurrency = 2
+run_for_sec = 60
+ramp_for_sec = 10
 
-# benchmark settings
+[stats]
+realtime_report_enabled = true
+
 [ycsb_config]
-record_count = 10000
-payload_size = 1000
-# ops_per_tx should be 2 for read benchmarks, and 1 for mixed read-write
-ops_per_tx = 2
-# user_count specifies the number of ScalarDB users to create for the benchmark
-# Each user will have its own key range to avoid conflicts
-user_count = 4
-# load settings
-load_concurrency = 2
-load_batch_size = 10
-load_overwrite = false
+# マルチユーザーABACモードの設定
+user_count = 2           # 並行ユーザー数（スレッド数）
+record_count = 1000      # テーブル全体のレコード数
+ops_per_tx = 2           # トランザクションあたりの操作数（READ操作）
+load_concurrency = 1     # データロード時の並列度
+load_batch_size = 10     # バッチサイズ
 
 # ABAC Configuration
-# ABAC basic settings
 abac_enabled = true
-# attribute_type: level | compartment | group
 abac_attribute_type = "level"
-# strategy: random | load_balanced
 abac_strategy = "random"
-# attribute_values: comma-separated list of attribute values
-# For level: "public,confidential,secret"
-# For compartment: "hr,sales,engineering"
-# For group: "team_a,team_b,team_c"
 abac_attribute_values = "public,confidential,secret"
 
-# kelpie benchmark runner settings
-[runner.client]
-# Change this to your server config if needed
-config_file = "./scalardb.properties.cluster-example"
-modules = [
-  { name = "loader", class_name = "com.scalar.db.benchmarks.ycsb.MultiUserAbacLoader", threads = 1 },
-  { name = "workloadc", class_name = "com.scalar.db.benchmarks.ycsb.MultiUserAbacWorkloadC", threads = 4 },
-]
-
-# kelpie runner mode settings
-# You can switch mode by "-m <mode>"
-[runner.default]
-description = "ABAC multi-user benchmark with 4 users, 10k records, and ABAC enabled"
-mode = ["loader", "workloadc"]
-
-[runner.mode.load_only]
-description = "Load data only with ABAC setup"
-mode = ["loader"]
-
-[runner.mode.workload_only]
-description = "Run benchmark workload only (data must be loaded beforehand)"
-mode = ["workloadc"]
-
-# Performance comparison modes
-[runner.mode.abac_enabled]
-description = "Benchmark with ABAC enabled"
-mode = ["loader", "workloadc"]
-
-[runner.mode.abac_disabled]
-description = "Benchmark with ABAC disabled for comparison"
-mode = ["loader", "workloadc"]
-# Override ABAC settings for this mode
-ycsb_config.abac_enabled = false
-
-# Strategy comparison modes
-[runner.mode.random_strategy]
-description = "Benchmark with random attribute assignment strategy"
-mode = ["loader", "workloadc"]
-# Override strategy setting
-ycsb_config.abac_strategy = "random"
-
-[runner.mode.load_balanced_strategy]
-description = "Benchmark with load-balanced attribute assignment strategy"
-mode = ["loader", "workloadc"]
-# Override strategy setting
-ycsb_config.abac_strategy = "load_balanced"
-
-# Attribute type comparison modes
-[runner.mode.level_attributes]
-description = "Benchmark with level-based attributes"
-mode = ["loader", "workloadc"]
-ycsb_config.abac_attribute_type = "level"
-ycsb_config.abac_attribute_values = "public,confidential,secret"
-
-[runner.mode.compartment_attributes]
-description = "Benchmark with compartment-based attributes"
-mode = ["loader", "workloadc"]
-ycsb_config.abac_attribute_type = "compartment"
-ycsb_config.abac_attribute_values = "hr,sales,engineering"
-
-[runner.mode.group_attributes]
-description = "Benchmark with group-based attributes"
-mode = ["loader", "workloadc"]
-ycsb_config.abac_attribute_type = "group"
-ycsb_config.abac_attribute_values = "team_a,team_b,team_c"
-
-# Scalability test modes
-[runner.mode.small_scale]
-description = "Small scale test - 2 users, 1k records"
-mode = ["loader", "workloadc"]
-ycsb_config.user_count = 2
-ycsb_config.record_count = 1000
-runner.client.modules = [
-  { name = "loader", class_name = "com.scalar.db.benchmarks.ycsb.MultiUserAbacLoader", threads = 1 },
-  { name = "workloadc", class_name = "com.scalar.db.benchmarks.ycsb.MultiUserAbacWorkloadC", threads = 2 },
-]
-
-[runner.mode.medium_scale]
-description = "Medium scale test - 8 users, 50k records"
-mode = ["loader", "workloadc"]
-ycsb_config.user_count = 8
-ycsb_config.record_count = 50000
-runner.client.modules = [
-  { name = "loader", class_name = "com.scalar.db.benchmarks.ycsb.MultiUserAbacLoader", threads = 1 },
-  { name = "workloadc", class_name = "com.scalar.db.benchmarks.ycsb.MultiUserAbacWorkloadC", threads = 8 },
-]
-
-[runner.mode.large_scale]
-description = "Large scale test - 16 users, 100k records"
-mode = ["loader", "workloadc"]
-ycsb_config.user_count = 16
-ycsb_config.record_count = 100000
-runner.client.modules = [
-  { name = "loader", class_name = "com.scalar.db.benchmarks.ycsb.MultiUserAbacLoader", threads = 1 },
-  { name = "workloadc", class_name = "com.scalar.db.benchmarks.ycsb.MultiUserAbacWorkloadC", threads = 16 },
-]
+[database_config]
+config_file = "scalardb.properties"
