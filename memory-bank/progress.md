@@ -65,15 +65,19 @@
 - ⬜ カスタムYCSBワークロードの定義機能
 - ⬜ マルチユーザーモードの他のワークロード対応（A、F）
 
-### ABACマルチユーザーベンチマーク（新規実装完了）
+### ABACマルチユーザーベンチマーク（基盤実装完了、本格実装への移行必要）
 - ✅ AttributeAssignmentStrategyインターフェースの実装
 - ✅ RandomStrategy（ランダム属性割り当て戦略）の実装
 - ✅ LoadBalancedStrategy（負荷分散属性割り当て戦略）の実装
-- ✅ MultiUserAbacWorkloadC（ABAC対応ワークロードC）の実装
-- ✅ MultiUserAbacLoader（ABAC対応ローダー）の実装
+- ✅ MultiUserAbacWorkloadC（ABAC対応ワークロードC）の基盤実装
+- ✅ MultiUserAbacLoader（ABAC対応ローダー）の基盤実装
 - ✅ YcsbCommonへのABAC設定パラメータ追加
 - ✅ ycsb-multi-user-abac-benchmark-config.toml設定ファイルの作成
-- ✅ 全体的なビルドテスト完了
+- ✅ 全体的なビルドテスト完了（コンパイルエラー解決）
+- 🔄 **現在の課題**: 仮実装からAbacAdmin API使用の本格実装への移行
+  - MultiUserAbacLoader.setupAbacEnvironment()メソッド: プレースホルダー実装
+  - MultiUserAbacWorkloadC.simulateAbacCheck()メソッド: シミュレーション実装
+  - 実際のScalarDB ABAC機能との統合が必要
 
 ### 拡張機能
 - ⬜ グラフィカルな結果レポート

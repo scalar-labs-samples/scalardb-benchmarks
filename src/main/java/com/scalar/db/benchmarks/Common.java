@@ -1,7 +1,9 @@
 package com.scalar.db.benchmarks;
 
+import com.scalar.db.api.AbacAdmin;
 import com.scalar.db.api.DistributedTransactionManager;
 import com.scalar.db.config.DatabaseConfig;
+import com.scalar.db.service.StorageFactory;
 import com.scalar.db.service.TransactionFactory;
 import com.scalar.kelpie.config.Config;
 import io.github.resilience4j.retry.Retry;
@@ -37,10 +39,8 @@ public class Common {
     String password = config.getUserString(CONFIG_NAME, "password", "cassandra");
     String storage = config.getUserString(CONFIG_NAME, "storage", "cassandra");
     String isolationLevel = config.getUserString(CONFIG_NAME, "isolation_level", "SNAPSHOT");
-    String transactionManager =
-        config.getUserString(CONFIG_NAME, "transaction_manager", "consensus-commit");
-    String serializableStrategy =
-        config.getUserString(CONFIG_NAME, "serializable_strategy", "EXTRA_READ");
+    String transactionManager = config.getUserString(CONFIG_NAME, "transaction_manager", "consensus-commit");
+    String serializableStrategy = config.getUserString(CONFIG_NAME, "serializable_strategy", "EXTRA_READ");
 
     Properties props = new Properties();
     props.setProperty("scalar.db.contact_points", contactPoints);
@@ -62,16 +62,22 @@ public class Common {
     return factory.getTransactionManager();
   }
 
+  public static AbacAdmin getAbacAdmin(Config config) {
+    DatabaseConfig dbConfig = getDatabaseConfig(config);
+    TransactionFactory factory = TransactionFactory.create(dbConfig.getProperties());
+    // DistributedTransactionAdminはAbacAdminを継承しているため、そのまま使用可能
+    return factory.getTransactionAdmin();
+  }
+
   public static Retry getRetryWithFixedWaitDuration(String name) {
     return getRetryWithFixedWaitDuration(name, MAX_RETRIES, WAIT_MILLS);
   }
 
   public static Retry getRetryWithFixedWaitDuration(String name, int maxRetries, int waitMillis) {
-    RetryConfig retryConfig =
-        RetryConfig.custom()
-            .maxAttempts(maxRetries)
-            .waitDuration(Duration.ofMillis(waitMillis))
-            .build();
+    RetryConfig retryConfig = RetryConfig.custom()
+        .maxAttempts(maxRetries)
+        .waitDuration(Duration.ofMillis(waitMillis))
+        .build();
 
     return Retry.of(name, retryConfig);
   }

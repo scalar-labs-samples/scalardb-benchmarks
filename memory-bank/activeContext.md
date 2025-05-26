@@ -30,11 +30,12 @@ ScalarDBベンチマークツールは、データベースのパフォーマン
 
 ## 次のステップ
 
-### 短期的な改善点（緊急度：中〜高）
-1. **ABACマルチユーザーベンチマークの実装**（新規追加）
-   - MultiUserAbacWorkloadCクラスの作成
-   - ABAC設定対応のローダーの実装
-   - 属性ベースアクセス制御による性能影響の測定機能
+### 短期的な改善点（緊急度：高）
+1. **ABACマルチユーザーベンチマークの本格実装への移行**（最優先）
+   - 現在の仮実装からAbacAdmin API使用の本格実装への変更
+   - MultiUserAbacLoader.setupAbacEnvironment()の実装完了
+   - MultiUserAbacWorkloadC.simulateAbacCheck()を実際のABAC権限チェックに変更
+   - ScalarDB 3.15.3のAbacAdmin APIの正確な仕様調査と実装
 2. マルチユーザーモード拡張（他のワークロードA、Fへの適用）
 3. より詳細なパフォーマンスメトリクスの収集と分析機能
 4. 他のYCSBワークロード（B、D、E）の実装検討

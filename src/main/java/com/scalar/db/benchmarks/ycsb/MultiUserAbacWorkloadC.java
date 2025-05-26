@@ -192,20 +192,34 @@ public class MultiUserAbacWorkloadC extends TimeBasedProcessor {
     }
 
     /**
-     * ABAC権限チェックをシミュレート
-     * 実際のABACでは、ScalarDBが権限チェックを行います
+     * ABAC権限チェック
+     * 実際のScalarDBのABAC機能では、トランザクション実行時に自動的に権限チェックが行われます。
+     * このメソッドは主にメトリクス収集とデバッグ情報のために使用されます。
      */
     private boolean simulateAbacCheck(int userId, int recordId) {
         if (!abacEnabled) {
             return true;
         }
 
-        // ユーザーとデータの属性を取得
+        // 属性情報を取得（主にログ・メトリクス目的）
         String userAttribute = attributeStrategy.assignUserAttribute(userId, attributeValues);
         String dataAttribute = attributeStrategy.assignDataAttribute(recordId, attributeValues);
 
-        // 単純な権限チェック: 同じ属性値なら許可
-        return userAttribute.equals(dataAttribute);
+        // 実際のABACでは、ScalarDBトランザクション実行時に自動的に権限チェックが行われ、
+        // 権限がない場合はTransactionExceptionがスローされます。
+        // ここでは期待される権限状態をシミュレートしてメトリクス収集に使用します。
+        boolean hasPermission = userAttribute.equals(dataAttribute);
+
+        // デバッグ情報とメトリクス用のログ
+        if (!hasPermission) {
+            logDebug("ABAC permission expected to be denied: user(" + userId + ")=" + userAttribute +
+                    ", data(" + recordId + ")=" + dataAttribute);
+        } else {
+            logDebug("ABAC permission expected to be granted: user(" + userId + ")=" + userAttribute +
+                    ", data(" + recordId + ")=" + dataAttribute);
+        }
+
+        return hasPermission;
     }
 
     @Override
