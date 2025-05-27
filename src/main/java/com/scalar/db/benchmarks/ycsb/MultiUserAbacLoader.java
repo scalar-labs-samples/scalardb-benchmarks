@@ -368,7 +368,7 @@ public class MultiUserAbacLoader extends PreProcessor {
                     AbacAdmin.AccessMode.READ_WRITE, true, true);
             logInfo("Assigned compartment '" + userCompartmentString + "' to user: " + username);
 
-            abacAdmin.removeGroupFromUser(policyName, username, policyName);
+            abacAdmin.removeGroupFromUser(policyName, username, userGroupString);
             abacAdmin.addGroupToUser(policyName, username, userGroupString,
                     AbacAdmin.AccessMode.READ_WRITE, true, true);
             logInfo("Assigned group '" + userGroupString + "' to user: " + username);
