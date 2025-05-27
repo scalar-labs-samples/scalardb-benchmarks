@@ -107,20 +107,16 @@ public class MultiUserAbacWorkloadC extends TimeBasedProcessor {
             String username = getUserName(i);
             String password = getPassword(i);
 
-            try {
-                Properties userProps = new Properties();
-                userProps.putAll(baseProps);
-                userProps.setProperty("scalar.db.username", username);
-                userProps.setProperty("scalar.db.password", password);
+            Properties userProps = new Properties();
+            userProps.putAll(baseProps);
+            userProps.setProperty("scalar.db.username", username);
+            userProps.setProperty("scalar.db.password", password);
 
-                TransactionFactory factory = TransactionFactory.create(userProps);
-                DistributedTransactionManager userManager = factory.getTransactionManager();
-                userManagers.add(userManager);
+            TransactionFactory factory = TransactionFactory.create(userProps);
+            DistributedTransactionManager userManager = factory.getTransactionManager();
+            userManagers.add(userManager);
 
-                logInfo("Created transaction manager for user: " + username);
-            } catch (Exception e) {
-                logWarn("Failed to create transaction manager for user " + username + ": " + e.getMessage());
-            }
+            logInfo("Created transaction manager for user: " + username);
         }
 
         if (userManagers.isEmpty()) {
@@ -224,22 +220,32 @@ public class MultiUserAbacWorkloadC extends TimeBasedProcessor {
 
     @Override
     public void close() {
-        try {
-            // ユーザートランザクションマネージャーを閉じる
-            for (DistributedTransactionManager userManager : userManagers) {
+        Exception firstException = null;
+
+        // ユーザートランザクションマネージャーを閉じる
+        for (DistributedTransactionManager userManager : userManagers) {
+            if (userManager != null) {
                 try {
-                    if (userManager != null) {
-                        userManager.close();
-                    }
+                    userManager.close();
                 } catch (Exception e) {
-                    logWarn("Failed to close user transaction manager", e);
+                    if (firstException == null) {
+                        firstException = e;
+                    } else {
+                        firstException.addSuppressed(e);
+                    }
                 }
             }
+        }
 
-            // 管理者トランザクションマネージャーを閉じる
+        // 管理者トランザクションマネージャーを閉じる
+        try {
             manager.close();
         } catch (Exception e) {
-            logWarn("Failed to close the transaction manager", e);
+            if (firstException == null) {
+                firstException = e;
+            } else {
+                firstException.addSuppressed(e);
+            }
         }
 
         // メトリクスの出力
@@ -270,6 +276,11 @@ public class MultiUserAbacWorkloadC extends TimeBasedProcessor {
         }
 
         setState(stateBuilder.build());
+
+        // 例外が発生していた場合は再スロー
+        if (firstException != null) {
+            throw new RuntimeException("Failed to close resources", firstException);
+        }
     }
 
     /**

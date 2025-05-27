@@ -4,6 +4,7 @@ import java.util.Random;
 
 import com.scalar.db.api.Consistency;
 import com.scalar.db.api.Get;
+import com.scalar.db.api.Insert;
 import com.scalar.db.api.Put;
 import com.scalar.db.io.Key;
 import com.scalar.db.io.TextColumn;
@@ -103,6 +104,38 @@ public class YcsbCommon {
         .build();
   }
 
+  public static Insert prepareInsert(int key, String payload) {
+    return prepareInsert(NAMESPACE, TABLE, key, payload);
+  }
+
+  public static Insert prepareInsert(String namespace, int key, String payload) {
+    return prepareInsert(namespace, TABLE, key, payload);
+  }
+
+  public static Insert prepareInsert(String namespace, String table, int key, String payload) {
+    return Insert.newBuilder()
+        .namespace(namespace)
+        .table(table)
+        .partitionKey(Key.ofInt(YCSB_KEY, key))
+        .value(TextColumn.of(PAYLOAD, payload))
+        .build();
+  }
+
+  public static Insert prepareInsertWithDataTag(int key, String payload, String dataTag) {
+    return prepareInsertWithDataTag(NAMESPACE, TABLE, key, payload, dataTag);
+  }
+
+  public static Insert prepareInsertWithDataTag(String namespace, String table, int key, String payload,
+      String dataTag) {
+    return Insert.newBuilder()
+        .namespace(namespace)
+        .table(table)
+        .partitionKey(Key.ofInt(YCSB_KEY, key))
+        .value(TextColumn.of(PAYLOAD, payload))
+        .value(TextColumn.of("data_tag", dataTag))
+        .build();
+  }
+
   public static int getLoadConcurrency(Config config) {
     return (int) config.getUserLong(CONFIG_NAME, LOAD_CONCURRENCY, DEFAULT_LOAD_CONCURRENCY);
   }
@@ -183,6 +216,49 @@ public class YcsbCommon {
       }
     }
     return valuesStr.split(",");
+  }
+
+  /**
+   * ABAC用のdata_tagフォーマットを生成します
+   * フォーマット: level:compartments(カンマ区切り):groups(カンマ区切り)
+   * 例: 'public::', 'confidential:hr,sales:', 'secret:hr:team_a,team_b'
+   * 
+   * @param level        レベル属性（nullの場合は空文字）
+   * @param compartments コンパートメント属性のリスト（nullまたは空の場合は空文字）
+   * @param groups       グループ属性のリスト（nullまたは空の場合は空文字）
+   * @return 適切にフォーマットされたdata_tag文字列
+   */
+  public static String generateDataTag(String level, String[] compartments, String[] groups) {
+    StringBuilder sb = new StringBuilder();
+
+    // レベル部分
+    if (level != null && !level.isEmpty()) {
+      sb.append(level.toLowerCase());
+    }
+    sb.append(":");
+
+    // コンパートメント部分
+    if (compartments != null && compartments.length > 0) {
+      for (int i = 0; i < compartments.length; i++) {
+        if (i > 0) {
+          sb.append(",");
+        }
+        sb.append(compartments[i].toLowerCase());
+      }
+    }
+    sb.append(":");
+
+    // グループ部分
+    if (groups != null && groups.length > 0) {
+      for (int i = 0; i < groups.length; i++) {
+        if (i > 0) {
+          sb.append(",");
+        }
+        sb.append(groups[i].toLowerCase());
+      }
+    }
+
+    return sb.toString();
   }
 
   // This method is taken from benchbase.

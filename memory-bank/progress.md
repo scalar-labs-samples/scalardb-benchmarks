@@ -65,19 +65,24 @@
 - ⬜ カスタムYCSBワークロードの定義機能
 - ⬜ マルチユーザーモードの他のワークロード対応（A、F）
 
-### ABACマルチユーザーベンチマーク（基盤実装完了、本格実装への移行必要）
+### ABACマルチユーザーベンチマーク（完全実装完了）
 - ✅ AttributeAssignmentStrategyインターフェースの実装
 - ✅ RandomStrategy（ランダム属性割り当て戦略）の実装
 - ✅ LoadBalancedStrategy（負荷分散属性割り当て戦略）の実装
-- ✅ MultiUserAbacWorkloadC（ABAC対応ワークロードC）の基盤実装
-- ✅ MultiUserAbacLoader（ABAC対応ローダー）の基盤実装
+- ✅ MultiUserAbacWorkloadC（ABAC対応ワークロードC）の完全実装
+- ✅ MultiUserAbacLoader（ABAC対応ローダー）の完全実装
 - ✅ YcsbCommonへのABAC設定パラメータ追加
 - ✅ ycsb-multi-user-abac-benchmark-config.toml設定ファイルの作成
 - ✅ 全体的なビルドテスト完了（コンパイルエラー解決）
-- 🔄 **現在の課題**: 仮実装からAbacAdmin API使用の本格実装への移行
-  - MultiUserAbacLoader.setupAbacEnvironment()メソッド: プレースホルダー実装
-  - MultiUserAbacWorkloadC.simulateAbacCheck()メソッド: シミュレーション実装
-  - 実際のScalarDB ABAC機能との統合が必要
+- ✅ **本格実装完了**: AbacAdmin API使用の完全実装
+  - ✅ MultiUserAbacLoader.setupAbacEnvironment()メソッド: AbacAdmin APIを使用した完全実装
+    - ポリシー作成・有効化（createPolicy, enablePolicy）
+    - 属性定義作成（createLevel, createCompartment, createGroup）
+    - テーブルポリシー適用（createTablePolicy, enableTablePolicy）
+    - ユーザー属性割り当て（setLevelsToUser, addCompartmentToUser, addGroupToUser）
+  - ✅ MultiUserAbacWorkloadC.simulateAbacCheck()メソッド: ABAC権限チェック実装
+  - ✅ Common.getAbacAdmin()メソッド: AbacAdminインスタンス取得実装
+  - ✅ 実際のScalarDB ABAC機能との統合完了
 
 ### 拡張機能
 - ⬜ グラフィカルな結果レポート

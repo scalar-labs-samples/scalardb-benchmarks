@@ -28,14 +28,40 @@ ScalarDBベンチマークツールは、データベースのパフォーマン
   - ユーザー作成と権限管理機能
   - ユーザーごとの固有キー範囲によるアクセス分散
 
+## 最新の更新
+
+### 完了した項目（2025/5/27）
+1. **ABAC用Insert機能の実装完了**
+   - YcsbCommonにprepareInsertメソッドを追加
+   - MultiUserAbacLoaderでABACが有効な場合にputの代わりにinsertを使用
+   - テーブルを毎回削除するため、insertのみでデータロードが完了
+   - ABACの制約に対応した安全なデータ挿入処理を実装
+
+2. **MultiUserAbacLoaderの独立化完了**
+   - MultiUserLoaderを継承せず、PreProcessorを直接継承する独立したクラスに変更
+   - ABAC専用の実装として、常にinsertを使用
+   - テーブル削除・再作成、ユーザー作成、ABAC環境セットアップを自己完結で実行
+   - ABAC使用時のみ使用される専用ローダーとして最適化
+   - MultiUserLoaderは元の状態を維持（変更をロールバック）
+
+3. **ABACマルチユーザーベンチマークの本格実装完了**（2025/5/27確認）
+   - MultiUserAbacLoader.setupAbacEnvironment()の完全実装
+     - AbacAdmin APIを使用したポリシー作成・有効化
+     - レベル/コンパートメント/グループ属性の作成
+     - テーブルポリシーの適用と有効化
+     - ユーザーへの属性割り当て
+   - MultiUserAbacWorkloadC.simulateAbacCheck()の実装
+   - Common.getAbacAdmin()メソッドの実装
+   - ビルドテスト完了、コンパイルエラーなし
+
 ## 次のステップ
 
 ### 短期的な改善点（緊急度：高）
-1. **ABACマルチユーザーベンチマークの本格実装への移行**（最優先）
-   - 現在の仮実装からAbacAdmin API使用の本格実装への変更
-   - MultiUserAbacLoader.setupAbacEnvironment()の実装完了
-   - MultiUserAbacWorkloadC.simulateAbacCheck()を実際のABAC権限チェックに変更
-   - ScalarDB 3.15.3のAbacAdmin APIの正確な仕様調査と実装
+1. **ABACマルチユーザーベンチマークの実地テストと検証**（最優先）
+   - ✅ 本格実装は完了済み（AbacAdmin API使用）
+   - 実際のScalarDB ABAC環境での動作確認
+   - 属性ベースアクセス制御の権限チェック動作検証
+   - パフォーマンスメトリクスの精度向上
 2. マルチユーザーモード拡張（他のワークロードA、Fへの適用）
 3. より詳細なパフォーマンスメトリクスの収集と分析機能
 4. 他のYCSBワークロード（B、D、E）の実装検討

@@ -2,33 +2,58 @@ package com.scalar.db.benchmarks.ycsb;
 
 import static com.scalar.db.benchmarks.ycsb.YcsbCommon.*;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Optional;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.json.Json;
 
 import com.scalar.db.api.AbacAdmin;
+import com.scalar.db.api.AuthAdmin.Privilege;
+import com.scalar.db.api.DistributedTransaction;
+import com.scalar.db.api.DistributedTransactionAdmin;
+import com.scalar.db.api.DistributedTransactionManager;
+import com.scalar.db.api.TableMetadata;
 import com.scalar.db.benchmarks.Common;
+import com.scalar.db.config.DatabaseConfig;
 import com.scalar.db.exception.storage.ExecutionException;
+import com.scalar.db.io.DataType;
+import com.scalar.db.service.TransactionFactory;
 import com.scalar.kelpie.config.Config;
+import com.scalar.kelpie.modules.PreProcessor;
 
 /**
- * ABAC対応のマルチユーザーローダー
- * 既存のMultiUserLoaderを拡張してABAC属性設定機能を追加
+ * ABAC専用マルチユーザーローダー
+ * ABAC環境でのベンチマーク用にinsertを使用したデータロードを行う
  */
-public class MultiUserAbacLoader extends MultiUserLoader {
+public class MultiUserAbacLoader extends PreProcessor {
+    private static final int REPORTING_INTERVAL = 10000;
 
-    private final boolean abacEnabled;
+    private final DatabaseConfig dbConfig;
+    private final int recordCount;
+    private final int loadConcurrency;
+    private final int payloadSize;
+    private final int userCount;
     private final AttributeAssignmentStrategy attributeStrategy;
     private final String[] attributeValues;
     private final String attributeType;
+    private final AtomicBoolean canceled = new AtomicBoolean(false);
+    private final AtomicInteger numFinished = new AtomicInteger(0);
 
     public MultiUserAbacLoader(Config config) {
         super(config);
 
-        this.abacEnabled = isAbacEnabled(config);
+        dbConfig = Common.getDatabaseConfig(config);
+        loadConcurrency = getLoadConcurrency(config);
+        recordCount = getRecordCount(config);
+        payloadSize = getPayloadSize(config);
+        userCount = getUserCount(config);
+
         this.attributeType = getAbacAttributeType(config);
         this.attributeValues = getAbacAttributeValues(config);
 
@@ -41,33 +66,129 @@ public class MultiUserAbacLoader extends MultiUserLoader {
         }
 
         logInfo("ABAC Multi-User Loader initialized:");
-        logInfo("  ABAC enabled: " + abacEnabled);
-        if (abacEnabled) {
-            logInfo("  Attribute type: " + attributeType);
-            logInfo("  Strategy: " + strategyName);
-            logInfo("  Attribute values: " + String.join(", ", attributeValues));
-        }
+        logInfo("  Attribute type: " + attributeType);
+        logInfo("  Strategy: " + strategyName);
+        logInfo("  Attribute values: " + String.join(", ", attributeValues));
+        logInfo("  User count: " + userCount);
+        logInfo("  Record count: " + recordCount);
     }
 
     @Override
     public void execute() {
         try {
-            logInfo("Starting MultiUserAbacLoader");
+            logInfo("Starting ABAC MultiUserLoader");
+            ExecutorService es = Executors.newFixedThreadPool(loadConcurrency);
 
-            if (abacEnabled) {
-                logInfo("ABAC is enabled - setting up ABAC environment");
-                setupAbacEnvironment();
-            } else {
-                logInfo("ABAC is disabled - using standard multi-user setup");
-            }
+            // テーブル削除・再作成（毎回フレッシュなテーブルで開始）
+            dropAndRecreateTable();
 
-            // 親クラスの実行（ユーザー作成とデータロード）
-            super.execute();
+            // ABAC環境のセットアップ
+            setupAbacEnvironment();
+
+            // ScalarDBユーザーの作成
+            createScalarDbUsers();
+
+            // レコードのロード（insertを使用）
+            loadRecords(es);
+
+            logInfo("Finished ABAC loading");
 
         } catch (Exception e) {
             logError("ABAC loader error", e);
-            throw e;
+            throw new RuntimeException("ABAC loader failed", e);
         }
+
+        setState(Json.createObjectBuilder().build());
+    }
+
+    @Override
+    public void close() {
+        logInfo("ABAC loader cleanup completed");
+    }
+
+    /**
+     * テーブルを削除して再作成します
+     * ベンチマーク開始時に毎回フレッシュなテーブルでテストを開始するために使用
+     */
+    private void dropAndRecreateTable() throws Exception {
+        logInfo("Dropping and recreating table: " + NAMESPACE + "." + TABLE);
+
+        TransactionFactory factory = TransactionFactory.create(dbConfig.getProperties());
+        DistributedTransactionAdmin admin = factory.getTransactionAdmin();
+
+        try {
+            // 既存のテーブルを削除（存在しない場合のエラーは無視）
+            logInfo("Dropping existing table: " + NAMESPACE + "." + TABLE);
+            admin.dropTable(NAMESPACE, TABLE);
+            logInfo("Successfully dropped table: " + NAMESPACE + "." + TABLE);
+        } catch (Exception e) {
+            logInfo("Table " + NAMESPACE + "." + TABLE + " might not exist, proceeding to create it");
+        }
+
+        try {
+            // 名前空間を作成（存在しない場合）
+            admin.createNamespace(NAMESPACE);
+            logInfo("Created namespace: " + NAMESPACE);
+        } catch (Exception e) {
+            logInfo("Namespace " + NAMESPACE + " might already exist, continuing");
+        }
+
+        // テーブルを作成（ABAC用にdata_tagカラムを追加）
+        logInfo("Creating table: " + NAMESPACE + "." + TABLE);
+        TableMetadata tableMetadata = TableMetadata.newBuilder()
+                .addPartitionKey(YCSB_KEY)
+                .addColumn(YCSB_KEY, DataType.INT)
+                .addColumn(PAYLOAD, DataType.TEXT)
+                .addColumn("data_tag", DataType.TEXT)
+                .build();
+
+        try {
+            admin.createTable(NAMESPACE, TABLE, tableMetadata);
+            logInfo("Successfully created table: " + NAMESPACE + "." + TABLE + " with data_tag column for ABAC");
+        } finally {
+            admin.close();
+        }
+    }
+
+    /**
+     * ScalarDBユーザーを作成します
+     */
+    private void createScalarDbUsers() throws Exception {
+        logInfo("Creating ScalarDB users: " + userCount);
+
+        TransactionFactory factory = TransactionFactory.create(dbConfig.getProperties());
+        DistributedTransactionAdmin admin = factory.getTransactionAdmin();
+
+        try {
+            // 各ユーザーを作成
+            for (int i = 0; i < userCount; i++) {
+                String username = getUserName(i);
+                String password = getPassword(i);
+
+                // 既存ユーザーを削除（存在しない場合のエラーは無視）
+                logInfo("Dropping existing user: " + username);
+                try {
+                    admin.dropUser(username);
+                } catch (Exception e) {
+                    // ユーザーが存在しない場合は無視
+                    logInfo("User " + username + " might not exist, proceeding to create it");
+                }
+
+                // ユーザー作成
+                logInfo("Creating user: " + username);
+                admin.createUser(username, password);
+
+                // テーブルへの権限付与
+                logInfo("Granting table privileges to " + username + " on " + NAMESPACE + "." + TABLE);
+                admin.grant(username, NAMESPACE, TABLE, Privilege.READ, Privilege.WRITE);
+
+                logInfo("Successfully created user: " + username + " with all required permissions");
+            }
+        } finally {
+            admin.close();
+        }
+
+        logInfo("Created " + userCount + " ScalarDB users");
     }
 
     /**
@@ -79,7 +200,7 @@ public class MultiUserAbacLoader extends MultiUserLoader {
         try {
             logInfo("Setting up ABAC environment...");
 
-            // AbacAdminインスタンスを取得（実装待ち）
+            // AbacAdminインスタンスを取得
             try {
                 abacAdmin = Common.getAbacAdmin(config);
                 logInfo("AbacAdmin instance created successfully");
@@ -108,8 +229,6 @@ public class MultiUserAbacLoader extends MultiUserLoader {
         } catch (Exception e) {
             logError("Failed to setup ABAC environment", e);
             throw new RuntimeException("ABAC setup failed", e);
-        } finally {
-            // AbacAdminはAutoCloseableではないため、明示的なcloseは不要
         }
     }
 
@@ -128,27 +247,20 @@ public class MultiUserAbacLoader extends MultiUserLoader {
      * ABACポリシーを作成
      */
     private void createAbacPolicy(AbacAdmin abacAdmin, String policyName) throws ExecutionException {
-        try {
-            logInfo("Creating ABAC policy: " + policyName);
+        logInfo("Creating ABAC policy: " + policyName);
 
-            // ポリシーが既に存在するかチェック（正確なAPIを使用）
-            if (abacAdmin.getPolicy(policyName).isPresent()) {
-                logInfo("Policy already exists: " + policyName);
-                return;
-            }
-
-            // 新しいポリシーを作成（正確なAPIシグネチャを使用）
-            abacAdmin.createPolicy(policyName, null); // デフォルトのデータタグカラム名を使用
-            abacAdmin.enablePolicy(policyName); // ポリシーを有効化
-            logInfo("Policy created and enabled successfully: " + policyName);
-
-        } catch (ExecutionException e) {
-            if (e.getMessage() != null && e.getMessage().contains("already exists")) {
-                logInfo("Policy already exists, continuing: " + policyName);
-            } else {
-                throw e;
-            }
+        // ポリシーが既に存在するかチェック
+        if (abacAdmin.getPolicy(policyName).isPresent()) {
+            logInfo("Policy already exists: " + policyName);
+        } else {
+            // 新しいポリシーを作成
+            abacAdmin.createPolicy(policyName, null);
+            logInfo("Policy created successfully: " + policyName);
         }
+
+        // ポリシーが存在する場合でも、必ずEnableを実行
+        abacAdmin.enablePolicy(policyName);
+        logInfo("Policy enabled successfully: " + policyName);
     }
 
     /**
@@ -157,27 +269,18 @@ public class MultiUserAbacLoader extends MultiUserLoader {
     private void createAbacAttributes(AbacAdmin abacAdmin, String policyName) throws ExecutionException {
         logInfo("Creating ABAC attributes for policy: " + policyName);
 
-        try {
-            if ("level".equals(attributeType)) {
-                createLevelAttributes(abacAdmin, policyName);
-            } else if ("compartment".equals(attributeType)) {
-                createCompartmentAttributes(abacAdmin, policyName);
-            } else if ("group".equals(attributeType)) {
-                createGroupAttributes(abacAdmin, policyName);
-            } else {
-                logWarn("Unknown attribute type: " + attributeType + ", defaulting to level");
-                createLevelAttributes(abacAdmin, policyName);
-            }
-
-            logInfo("ABAC attributes created successfully");
-
-        } catch (ExecutionException e) {
-            if (e.getMessage() != null && e.getMessage().contains("already exists")) {
-                logInfo("Attributes already exist, continuing");
-            } else {
-                throw e;
-            }
+        if ("level".equals(attributeType)) {
+            createLevelAttributes(abacAdmin, policyName);
+        } else if ("compartment".equals(attributeType)) {
+            createCompartmentAttributes(abacAdmin, policyName);
+        } else if ("group".equals(attributeType)) {
+            createGroupAttributes(abacAdmin, policyName);
+        } else {
+            logWarn("Unknown attribute type: " + attributeType + ", defaulting to level");
+            createLevelAttributes(abacAdmin, policyName);
         }
+
+        logInfo("ABAC attributes created successfully");
     }
 
     /**
@@ -187,20 +290,16 @@ public class MultiUserAbacLoader extends MultiUserLoader {
         logInfo("Creating level attributes");
 
         for (int i = 0; i < attributeValues.length; i++) {
-            try {
-                String shortName = attributeValues[i];
-                String longName = "Level " + shortName;
-                int levelNumber = i + 1; // 1から開始
+            String shortName = attributeValues[i];
+            String longName = "Level " + shortName;
+            int levelNumber = i + 1;
 
-                // 正確なAPIシグネチャを使用
+            // 既に存在するかチェック
+            if (abacAdmin.getLevel(policyName, shortName).isPresent()) {
+                logInfo("Level already exists: " + shortName + ", skipping creation");
+            } else {
                 abacAdmin.createLevel(policyName, shortName, longName, levelNumber);
                 logInfo("Created level: " + levelNumber + " (" + shortName + " - " + longName + ")");
-            } catch (Exception e) {
-                if (e.getMessage() != null && e.getMessage().contains("already exists")) {
-                    logInfo("Level already exists: " + attributeValues[i]);
-                } else {
-                    logWarn("Failed to create level " + attributeValues[i] + ": " + e.getMessage());
-                }
             }
         }
     }
@@ -212,19 +311,15 @@ public class MultiUserAbacLoader extends MultiUserLoader {
         logInfo("Creating compartment attributes");
 
         for (String attributeValue : attributeValues) {
-            try {
-                String shortName = attributeValue;
-                String longName = "Compartment " + attributeValue;
+            String shortName = attributeValue;
+            String longName = "Compartment " + attributeValue;
 
-                // 正確なAPIシグネチャを使用
+            // 既に存在するかチェック
+            if (abacAdmin.getCompartment(policyName, shortName).isPresent()) {
+                logInfo("Compartment already exists: " + shortName + ", skipping creation");
+            } else {
                 abacAdmin.createCompartment(policyName, shortName, longName);
                 logInfo("Created compartment: " + shortName + " (" + longName + ")");
-            } catch (Exception e) {
-                if (e.getMessage() != null && e.getMessage().contains("already exists")) {
-                    logInfo("Compartment already exists: " + attributeValue);
-                } else {
-                    logWarn("Failed to create compartment " + attributeValue + ": " + e.getMessage());
-                }
             }
         }
     }
@@ -236,19 +331,15 @@ public class MultiUserAbacLoader extends MultiUserLoader {
         logInfo("Creating group attributes");
 
         for (String attributeValue : attributeValues) {
-            try {
-                String shortName = attributeValue;
-                String longName = "Group " + attributeValue;
+            String shortName = attributeValue;
+            String longName = "Group " + attributeValue;
 
-                // 正確なAPIシグネチャを使用（親グループなしのトップレベルグループ）
+            // 既に存在するかチェック
+            if (abacAdmin.getGroup(policyName, shortName).isPresent()) {
+                logInfo("Group already exists: " + shortName + ", skipping creation");
+            } else {
                 abacAdmin.createGroup(policyName, shortName, longName, null);
                 logInfo("Created group: " + shortName + " (" + longName + ")");
-            } catch (Exception e) {
-                if (e.getMessage() != null && e.getMessage().contains("already exists")) {
-                    logInfo("Group already exists: " + attributeValue);
-                } else {
-                    logWarn("Failed to create group " + attributeValue + ": " + e.getMessage());
-                }
             }
         }
     }
@@ -263,18 +354,18 @@ public class MultiUserAbacLoader extends MultiUserLoader {
 
         logInfo("Applying policy to table: " + namespace + "." + tableName);
 
-        try {
-            // 正確なAPIシグネチャを使用
+        // テーブルポリシーが既に存在するかチェック
+        if (abacAdmin.getTablePolicy(tablePolicyName).isPresent()) {
+            logInfo("Table policy already exists: " + tablePolicyName);
+        } else {
+            // 新しいテーブルポリシーを作成
             abacAdmin.createTablePolicy(tablePolicyName, policyName, namespace, tableName);
-            abacAdmin.enableTablePolicy(tablePolicyName);
-            logInfo("Policy applied and enabled for table: " + namespace + "." + tableName);
-        } catch (ExecutionException e) {
-            if (e.getMessage() != null && e.getMessage().contains("already applied")) {
-                logInfo("Policy already applied to table: " + namespace + "." + tableName);
-            } else {
-                throw e;
-            }
+            logInfo("Table policy created successfully: " + tablePolicyName);
         }
+
+        // テーブルポリシーが存在する場合でも、必ずEnableを実行
+        abacAdmin.enableTablePolicy(tablePolicyName);
+        logInfo("Table policy enabled successfully: " + tablePolicyName);
     }
 
     /**
@@ -283,35 +374,163 @@ public class MultiUserAbacLoader extends MultiUserLoader {
     private void assignAttributesToUsers(AbacAdmin abacAdmin, String policyName) throws ExecutionException {
         logInfo("Assigning attributes to users");
 
-        int userCount = getUserCount(config);
         for (int i = 0; i < userCount; i++) {
             String username = getUserName(i);
             String userAttribute = attributeStrategy.assignUserAttribute(i, attributeValues);
 
-            try {
-                if ("level".equals(attributeType)) {
-                    // レベル属性をユーザーに設定
-                    abacAdmin.setLevelsToUser(policyName, username, userAttribute, userAttribute, userAttribute);
-                    logInfo("Assigned level '" + userAttribute + "' to user: " + username);
-                } else if ("compartment".equals(attributeType)) {
-                    // まずレベルを設定（コンパートメント使用の前提条件）
-                    String defaultLevel = attributeValues[0]; // 最初の値をデフォルトレベルとして使用
-                    abacAdmin.setLevelsToUser(policyName, username, defaultLevel, defaultLevel, defaultLevel);
-                    // コンパートメントを追加
-                    abacAdmin.addCompartmentToUser(policyName, username, userAttribute,
-                            AbacAdmin.AccessMode.READ_WRITE, true, true);
-                    logInfo("Assigned compartment '" + userAttribute + "' to user: " + username);
-                } else if ("group".equals(attributeType)) {
-                    // まずレベルを設定（グループ使用の前提条件）
-                    String defaultLevel = attributeValues[0]; // 最初の値をデフォルトレベルとして使用
-                    abacAdmin.setLevelsToUser(policyName, username, defaultLevel, defaultLevel, defaultLevel);
-                    // グループを追加
-                    abacAdmin.addGroupToUser(policyName, username, userAttribute,
-                            AbacAdmin.AccessMode.READ_WRITE, true, true);
-                    logInfo("Assigned group '" + userAttribute + "' to user: " + username);
+            if ("level".equals(attributeType)) {
+                // レベル属性をユーザーに設定
+                abacAdmin.setLevelsToUser(policyName, username, userAttribute, userAttribute, userAttribute);
+                logInfo("Assigned level '" + userAttribute + "' to user: " + username);
+            } else if ("compartment".equals(attributeType)) {
+                // まずレベルを設定（コンパートメント使用の前提条件）
+                String defaultLevel = attributeValues[0];
+                abacAdmin.setLevelsToUser(policyName, username, defaultLevel, defaultLevel, defaultLevel);
+                // コンパートメントを追加
+                abacAdmin.addCompartmentToUser(policyName, username, userAttribute,
+                        AbacAdmin.AccessMode.READ_WRITE, true, true);
+                logInfo("Assigned compartment '" + userAttribute + "' to user: " + username);
+            } else if ("group".equals(attributeType)) {
+                // まずレベルを設定（グループ使用の前提条件）
+                String defaultLevel = attributeValues[0];
+                abacAdmin.setLevelsToUser(policyName, username, defaultLevel, defaultLevel, defaultLevel);
+                // グループを追加
+                abacAdmin.addGroupToUser(policyName, username, userAttribute,
+                        AbacAdmin.AccessMode.READ_WRITE, true, true);
+                logInfo("Assigned group '" + userAttribute + "' to user: " + username);
+            }
+        }
+    }
+
+    /**
+     * insertを使用したレコードロード（ABAC専用）
+     */
+    private void loadRecords(ExecutorService es) {
+        logInfo("Loading " + recordCount + " records with concurrency " + loadConcurrency + " (using INSERT for ABAC)");
+        int numThreads = loadConcurrency;
+        int recordsPerThread = recordCount / numThreads;
+
+        List<CompletableFuture> futures = new ArrayList<>();
+        for (int i = 0; i < numThreads; i++) {
+            final int threadId = i;
+            final int start = i * recordsPerThread;
+            final int end = (i == numThreads - 1) ? recordCount : (i + 1) * recordsPerThread;
+
+            futures.add(
+                    CompletableFuture.runAsync(
+                            () -> loadRange(threadId, start, end), es));
+        }
+
+        CompletableFuture<Void> allFutures = CompletableFuture.allOf(
+                futures.toArray(new CompletableFuture[0]));
+
+        try {
+            allFutures.join();
+        } catch (Exception e) {
+            canceled.set(true);
+            throw e;
+        } finally {
+            es.shutdown();
+        }
+    }
+
+    /**
+     * insertを使用したレンジロード（ABAC対応）
+     */
+    private void loadRange(int threadId, int startInclusive, int endExclusive) {
+        long startTime = System.currentTimeMillis();
+        logInfo(
+                "Thread "
+                        + threadId
+                        + " loading records from "
+                        + startInclusive
+                        + " to "
+                        + (endExclusive - 1)
+                        + " (using INSERT for ABAC)");
+
+        Random random = new Random();
+        int remaining = endExclusive - startInclusive;
+        int loaded = 0;
+
+        // 管理者として接続してデータロード
+        TransactionFactory factory = TransactionFactory.create(dbConfig.getProperties());
+        DistributedTransactionManager manager = factory.getTransactionManager();
+        try {
+            // insertを使用してデータロード
+            for (int i = startInclusive; i < endExclusive; i++) {
+                char[] payload = new char[payloadSize];
+                randomFastChars(random, payload);
+
+                try {
+                    DistributedTransaction tx = manager.start();
+                    try {
+                        // ABACではinsertを使用（putは使用不可）
+                        // 各レコードに適切なdata_tagを生成
+                        String dataAttribute = attributeStrategy.assignDataAttribute(i, attributeValues);
+                        String dataTag;
+
+                        // 属性タイプに応じてdata_tagを生成
+                        if ("level".equals(attributeType)) {
+                            dataTag = generateDataTag(dataAttribute, null, null);
+                        } else if ("compartment".equals(attributeType)) {
+                            dataTag = generateDataTag(null, new String[] { dataAttribute }, null);
+                        } else if ("group".equals(attributeType)) {
+                            dataTag = generateDataTag(null, null, new String[] { dataAttribute });
+                        } else {
+                            // デフォルトはlevel
+                            dataTag = generateDataTag(dataAttribute, null, null);
+                        }
+
+                        tx.insert(prepareInsertWithDataTag(i, String.valueOf(payload), dataTag));
+                        tx.commit();
+
+                        // 進捗報告
+                        loaded++;
+                        remaining--;
+                        if (loaded % REPORTING_INTERVAL == 0) {
+                            long elapsed = System.currentTimeMillis() - startTime;
+                            double rate = loaded * 1000.0 / elapsed;
+                            logInfo(
+                                    "Thread "
+                                            + threadId
+                                            + " loaded "
+                                            + loaded
+                                            + " records, "
+                                            + remaining
+                                            + " remaining"
+                                            + String.format(" (%.2f records/second)", rate));
+                        }
+                    } catch (Exception e) {
+                        tx.abort();
+                        throw e;
+                    }
+                } catch (Exception e) {
+                    if (canceled.get()) {
+                        logInfo("Thread " + threadId + " cancelled");
+                        return;
+                    }
+                    throw e;
                 }
+            }
+
+            // 完了報告
+            int finished = numFinished.incrementAndGet();
+            logInfo("Thread " + threadId + " finished loading.");
+            if (finished == loadConcurrency) {
+                long elapsed = System.currentTimeMillis() - startTime;
+                double rate = (endExclusive - startInclusive) * 1000.0 / elapsed;
+                logInfo(
+                        "Loading complete: " + (endExclusive - startInclusive) + " records loaded in "
+                                + elapsed / 1000.0 + " seconds"
+                                + String.format(" (%.2f records/second)", rate));
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Error loading data for thread " + threadId, e);
+        } finally {
+            try {
+                manager.close();
             } catch (Exception e) {
-                logWarn("Failed to assign attribute to user " + username + ": " + e.getMessage());
+                logWarn("Failed to close transaction manager for thread " + threadId);
             }
         }
     }
@@ -323,9 +542,6 @@ public class MultiUserAbacLoader extends MultiUserLoader {
      * @return 割り当てられた属性値
      */
     public String assignUserAttribute(int userId) {
-        if (!abacEnabled) {
-            return null;
-        }
         return attributeStrategy.assignUserAttribute(userId, attributeValues);
     }
 
@@ -336,19 +552,6 @@ public class MultiUserAbacLoader extends MultiUserLoader {
      * @return 割り当てられた属性値
      */
     public String assignDataAttribute(int recordId) {
-        if (!abacEnabled) {
-            return null;
-        }
         return attributeStrategy.assignDataAttribute(recordId, attributeValues);
-    }
-
-    @Override
-    public void close() {
-        super.close();
-
-        // ABAC関連のクリーンアップがあれば実行
-        if (abacEnabled) {
-            logInfo("ABAC loader cleanup completed");
-        }
     }
 }
