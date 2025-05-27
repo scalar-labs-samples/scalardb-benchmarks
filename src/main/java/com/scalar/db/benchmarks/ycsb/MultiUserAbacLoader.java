@@ -139,7 +139,7 @@ public class MultiUserAbacLoader extends PreProcessor {
                 .addPartitionKey(YCSB_KEY)
                 .addColumn(YCSB_KEY, DataType.INT)
                 .addColumn(PAYLOAD, DataType.TEXT)
-                .addColumn("data_tag", DataType.TEXT)
+                .addColumn(DATA_TAG, DataType.TEXT)
                 .build();
 
         try {
@@ -253,9 +253,9 @@ public class MultiUserAbacLoader extends PreProcessor {
         if (abacAdmin.getPolicy(policyName).isPresent()) {
             logInfo("Policy already exists: " + policyName);
         } else {
-            // 新しいポリシーを作成
-            abacAdmin.createPolicy(policyName, null);
-            logInfo("Policy created successfully: " + policyName);
+            // 新しいポリシーを作成（data_tagカラム名を指定）
+            abacAdmin.createPolicy(policyName, DATA_TAG);
+            logInfo("Policy created successfully: " + policyName + " with data_tag column: " + DATA_TAG);
         }
 
         // ポリシーが存在する場合でも、必ずEnableを実行

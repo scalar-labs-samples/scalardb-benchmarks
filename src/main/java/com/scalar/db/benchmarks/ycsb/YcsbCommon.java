@@ -21,6 +21,7 @@ public class YcsbCommon {
   static final String TABLE = "usertable";
   static final String YCSB_KEY = "ycsb_key";
   static final String PAYLOAD = "payload";
+  static final String DATA_TAG = "data_tag";
   static final String CONFIG_NAME = "ycsb_config";
   static final String LOAD_CONCURRENCY = "load_concurrency";
   static final String LOAD_BATCH_SIZE = "load_batch_size";
@@ -132,7 +133,7 @@ public class YcsbCommon {
         .table(table)
         .partitionKey(Key.ofInt(YCSB_KEY, key))
         .value(TextColumn.of(PAYLOAD, payload))
-        .value(TextColumn.of("data_tag", dataTag))
+        .value(TextColumn.of(DATA_TAG, dataTag))
         .build();
   }
 
