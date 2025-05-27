@@ -59,6 +59,15 @@ public class YcsbReporter extends PostProcessor {
           .append("\n")
           .append("Total authorization operations: ").append(getPreviousState().getString("total-operations"));
 
+      // デバッグ情報を追加
+      if (getPreviousState().getString("transaction-execution-count") != null) {
+        abacReport.append("\n")
+            .append("==== Debug Information ====\n")
+            .append("Transaction execution count: ").append(getPreviousState().getString("transaction-execution-count"))
+            .append("\n")
+            .append("ExecuteEach call count: ").append(getPreviousState().getString("execute-each-call-count"));
+      }
+
       logInfo(abacReport.toString());
     }
   }

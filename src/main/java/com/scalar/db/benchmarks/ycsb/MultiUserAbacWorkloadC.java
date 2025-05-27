@@ -46,6 +46,8 @@ public class MultiUserAbacWorkloadC extends TimeBasedProcessor {
     private final LongAdder transactionRetryCount = new LongAdder();
     private final LongAdder authorizationSuccessCount = new LongAdder();
     private final LongAdder authorizationFailureCount = new LongAdder();
+    private final LongAdder transactionExecutionCount = new LongAdder();
+    private final LongAdder executeEachCallCount = new LongAdder();
 
     // ユーザー管理
     private final List<DistributedTransactionManager> userManagers = new ArrayList<>();
@@ -69,6 +71,10 @@ public class MultiUserAbacWorkloadC extends TimeBasedProcessor {
         });
 
         logInfo("ABAC Multi-User Workload C initialized:");
+        logInfo("  Record count: " + recordCount);
+        logInfo("  Ops per transaction: " + opsPerTx);
+        logInfo("  User count: " + userCount);
+        logInfo("  Concurrency: " + config.getConcurrency());
     }
 
     /**
@@ -106,6 +112,8 @@ public class MultiUserAbacWorkloadC extends TimeBasedProcessor {
 
     @Override
     public void executeEach() throws TransactionException {
+        executeEachCallCount.increment();
+
         KeyRange range = threadLocalKeyRange.get();
         Random random = ThreadLocalRandom.current();
 
@@ -141,6 +149,7 @@ public class MultiUserAbacWorkloadC extends TimeBasedProcessor {
                     }
                 }
                 transaction.commit();
+                transactionExecutionCount.increment();
                 break;
             } catch (CrudConflictException | CommitConflictException e) {
                 transaction.abort();
@@ -180,7 +189,9 @@ public class MultiUserAbacWorkloadC extends TimeBasedProcessor {
                 .add("authorization-success-count", authorizationSuccessCount.toString())
                 .add("authorization-failure-count", authorizationFailureCount.toString())
                 .add("total-operations",
-                        String.valueOf(authorizationSuccessCount.sum() + authorizationFailureCount.sum()));
+                        String.valueOf(authorizationSuccessCount.sum() + authorizationFailureCount.sum()))
+                .add("transaction-execution-count", transactionExecutionCount.toString())
+                .add("execute-each-call-count", executeEachCallCount.toString());
         setState(stateBuilder.build());
 
         // 例外が発生していた場合は再スロー
