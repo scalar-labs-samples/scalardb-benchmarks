@@ -1,6 +1,17 @@
 package com.scalar.db.benchmarks.ycsb;
 
-import static com.scalar.db.benchmarks.ycsb.YcsbCommon.*;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.CONFIG_NAME;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.OPS_PER_TX;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.STRATEGY_LOAD_BALANCED;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getAbacAttributeType;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getAbacAttributeValues;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getAbacStrategy;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getPassword;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getRecordCount;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getUserCount;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getUserName;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.isAbacEnabled;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.prepareGet;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -1,6 +1,23 @@
 package com.scalar.db.benchmarks.ycsb;
 
-import static com.scalar.db.benchmarks.ycsb.YcsbCommon.*;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.DATA_TAG;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.NAMESPACE;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.PAYLOAD;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.STRATEGY_LOAD_BALANCED;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.TABLE;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.YCSB_KEY;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.generateDataTag;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getAbacAttributeType;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getAbacAttributeValues;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getAbacStrategy;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getLoadConcurrency;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getPassword;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getPayloadSize;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getRecordCount;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getUserCount;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getUserName;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.prepareInsertWithDataTag;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.randomFastChars;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -82,11 +99,11 @@ public class MultiUserAbacLoader extends PreProcessor {
             // テーブル削除・再作成（毎回フレッシュなテーブルで開始）
             dropAndRecreateTable();
 
-            // ABAC環境のセットアップ
-            setupAbacEnvironment();
-
             // ScalarDBユーザーの作成
             createScalarDbUsers();
+
+            // ABAC環境のセットアップ
+            setupAbacEnvironment();
 
             // レコードのロード（insertを使用）
             loadRecords(es);
@@ -139,7 +156,6 @@ public class MultiUserAbacLoader extends PreProcessor {
                 .addPartitionKey(YCSB_KEY)
                 .addColumn(YCSB_KEY, DataType.INT)
                 .addColumn(PAYLOAD, DataType.TEXT)
-                .addColumn(DATA_TAG, DataType.TEXT)
                 .build();
 
         try {
@@ -410,7 +426,7 @@ public class MultiUserAbacLoader extends PreProcessor {
         int numThreads = loadConcurrency;
         int recordsPerThread = recordCount / numThreads;
 
-        List<CompletableFuture> futures = new ArrayList<>();
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (int i = 0; i < numThreads; i++) {
             final int threadId = i;
             final int start = i * recordsPerThread;

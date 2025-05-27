@@ -1,17 +1,18 @@
 package com.scalar.db.benchmarks;
 
-import com.scalar.db.api.AbacAdmin;
-import com.scalar.db.api.DistributedTransactionManager;
-import com.scalar.db.config.DatabaseConfig;
-import com.scalar.db.service.StorageFactory;
-import com.scalar.db.service.TransactionFactory;
-import com.scalar.kelpie.config.Config;
-import io.github.resilience4j.retry.Retry;
-import io.github.resilience4j.retry.RetryConfig;
 import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Properties;
+
+import com.scalar.db.api.AbacAdmin;
+import com.scalar.db.api.DistributedTransactionManager;
+import com.scalar.db.config.DatabaseConfig;
+import com.scalar.db.service.TransactionFactory;
+import com.scalar.kelpie.config.Config;
+
+import io.github.resilience4j.retry.Retry;
+import io.github.resilience4j.retry.RetryConfig;
 
 public class Common {
   private static final String CONFIG_NAME = "database_config";
