@@ -140,12 +140,15 @@ public class MultiUserAbacWorkloadC extends TimeBasedProcessor {
                 for (Integer userId : userIds) {
                     // 実際のREAD操作
                     Optional<Result> result = transaction.get(prepareGet(userId));
+                    int threadId = threadLocalUserId.get();
                     if (result.isPresent()) {
                         // 認証成功のメトリクスを更新
                         authorizationSuccessCount.increment();
+                        logDebug("AUTH_SUCCESS: ThreadID: " + threadId + ", userId: " + userId);
                     } else {
                         // 認証失敗のメトリクスを更新
                         authorizationFailureCount.increment();
+                        logDebug("AUTH_FAILURE: ThreadID: " + threadId + ", userId: " + userId);
                     }
                 }
                 transaction.commit();
@@ -201,7 +204,12 @@ public class MultiUserAbacWorkloadC extends TimeBasedProcessor {
     }
 
     /**
-     * 各スレッドに割り当てるキー範囲を計算
+     * 各スレッドに割り当てるキー範囲を計算します。
+     * 
+     * @param threadId    スレッドID
+     * @param userCount   合計ユーザー数（スレッド数）
+     * @param recordCount 総レコード数
+     * @return キー範囲
      */
     private KeyRange calculateKeyRange(int threadId, int userCount, int recordCount) {
         if (threadId >= userCount) {
@@ -209,19 +217,24 @@ public class MultiUserAbacWorkloadC extends TimeBasedProcessor {
         }
 
         int rangeSize = recordCount / userCount;
+        // 最後のスレッドには端数も含める
         if (threadId == userCount - 1) {
-            return new KeyRange(threadId * rangeSize, recordCount - 1);
+            return new KeyRange(
+                    threadId * rangeSize,
+                    recordCount - 1);
         } else {
-            return new KeyRange(threadId * rangeSize, (threadId + 1) * rangeSize - 1);
+            return new KeyRange(
+                    threadId * rangeSize,
+                    (threadId + 1) * rangeSize - 1);
         }
     }
 
     /**
-     * スレッドに割り当てられたキー範囲
+     * スレッドに割り当てられたキー範囲を表すクラス
      */
     private static class KeyRange {
-        final int startKey;
-        final int endKey;
+        final int startKey; // 範囲の開始キー（含む）
+        final int endKey; // 範囲の終了キー（含む）
 
         KeyRange(int startKey, int endKey) {
             this.startKey = startKey;

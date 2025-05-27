@@ -29,23 +29,14 @@ public class YcsbCommon {
   static final String RECORD_COUNT = "record_count";
   static final String PAYLOAD_SIZE = "payload_size";
   static final String OPS_PER_TX = "ops_per_tx";
-  static final String USER_COUNT = "user_count"; // 新規追加: ユーザー数設定パラメータ
-  // マルチユーザー認証用の共通パスワードベース
+  static final String USER_COUNT = "user_count";
   static final String PASSWORD_BASE = "password";
-
-  // ABAC関連の設定パラメータ
-  static final String ABAC_ATTRIBUTE_TYPE = "abac_attribute_type";
-  static final String ABAC_STRATEGY = "abac_strategy";
-  static final String ABAC_ATTRIBUTE_VALUES = "abac_attribute_values";
 
   // ABAC属性タイプの定数
   static final String ATTRIBUTE_TYPE_LEVEL = "level";
   static final String ATTRIBUTE_TYPE_COMPARTMENT = "compartment";
   static final String ATTRIBUTE_TYPE_GROUP = "group";
 
-  // ABAC戦略の定数
-  static final String STRATEGY_RANDOM = "random";
-  static final String STRATEGY_LOAD_BALANCED = "load_balanced";
   private static final int CHAR_START = 32; // [space]
   private static final int CHAR_STOP = 126; // [~]
   private static final char[] CHAR_SYMBOLS = new char[1 + CHAR_STOP - CHAR_START];
@@ -156,7 +147,6 @@ public class YcsbCommon {
     return (int) config.getUserLong(CONFIG_NAME, PAYLOAD_SIZE, DEFAULT_PAYLOAD_SIZE);
   }
 
-  // 新規追加: ユーザー数（スレッド数）取得メソッド
   public static int getUserCount(Config config) {
     long userCount = config.getUserLong(CONFIG_NAME, USER_COUNT, 0L);
     if (userCount <= 0) {
@@ -186,32 +176,28 @@ public class YcsbCommon {
     return PASSWORD_BASE + index;
   }
 
-  // ABAC設定取得メソッド
-  public static String getAbacAttributeType(Config config) {
-    return config.getUserString(CONFIG_NAME, ABAC_ATTRIBUTE_TYPE, ATTRIBUTE_TYPE_LEVEL);
+  public enum AttributeType {
+    ATTRIBUTE_TYPE_LEVEL,
+    ATTRIBUTE_TYPE_COMPARTMENT,
+    ATTRIBUTE_TYPE_GROUP
   }
 
-  public static String getAbacStrategy(Config config) {
-    return config.getUserString(CONFIG_NAME, ABAC_STRATEGY, STRATEGY_RANDOM);
-  }
-
-  public static String[] getAbacAttributeValues(Config config) {
-    String valuesStr = config.getUserString(CONFIG_NAME, ABAC_ATTRIBUTE_VALUES, "");
-    if (valuesStr.isEmpty()) {
-      // デフォルト値を属性タイプに応じて設定
-      String attributeType = getAbacAttributeType(config);
-      switch (attributeType) {
-        case ATTRIBUTE_TYPE_LEVEL:
-          return new String[] { "public", "confidential", "secret" };
-        case ATTRIBUTE_TYPE_COMPARTMENT:
-          return new String[] { "hr", "sales", "engineering" };
-        case ATTRIBUTE_TYPE_GROUP:
-          return new String[] { "team_a", "team_b", "team_c" };
-        default:
-          return new String[] { "public", "confidential", "secret" };
-      }
+  public static String[] getAbacAttributeValues(AttributeType attributeType) {
+    switch (attributeType) {
+      case ATTRIBUTE_TYPE_LEVEL:
+        return new String[] { "public", "confidential", "secret" };
+      case ATTRIBUTE_TYPE_COMPARTMENT:
+        return new String[] { "hr", "sales", "engineering" };
+      case ATTRIBUTE_TYPE_GROUP:
+        return new String[] { "team_a", "team_b", "team_c" };
+      default:
+        throw new IllegalArgumentException("Unknown attribute type: " + attributeType);
     }
-    return valuesStr.split(",");
+  }
+
+  public static String getAbacAttributeValueRandom(AttributeType attributeType, Random rng) {
+    String[] values = getAbacAttributeValues(attributeType);
+    return values[rng.nextInt(values.length)];
   }
 
   /**

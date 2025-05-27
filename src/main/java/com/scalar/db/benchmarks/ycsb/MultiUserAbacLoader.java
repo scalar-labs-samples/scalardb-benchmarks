@@ -3,13 +3,11 @@ package com.scalar.db.benchmarks.ycsb;
 import static com.scalar.db.benchmarks.ycsb.YcsbCommon.DATA_TAG;
 import static com.scalar.db.benchmarks.ycsb.YcsbCommon.NAMESPACE;
 import static com.scalar.db.benchmarks.ycsb.YcsbCommon.PAYLOAD;
-import static com.scalar.db.benchmarks.ycsb.YcsbCommon.STRATEGY_LOAD_BALANCED;
 import static com.scalar.db.benchmarks.ycsb.YcsbCommon.TABLE;
 import static com.scalar.db.benchmarks.ycsb.YcsbCommon.YCSB_KEY;
 import static com.scalar.db.benchmarks.ycsb.YcsbCommon.generateDataTag;
-import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getAbacAttributeType;
+import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getAbacAttributeValueRandom;
 import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getAbacAttributeValues;
-import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getAbacStrategy;
 import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getLoadConcurrency;
 import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getPassword;
 import static com.scalar.db.benchmarks.ycsb.YcsbCommon.getPayloadSize;
@@ -37,6 +35,7 @@ import com.scalar.db.api.DistributedTransactionAdmin;
 import com.scalar.db.api.DistributedTransactionManager;
 import com.scalar.db.api.TableMetadata;
 import com.scalar.db.benchmarks.Common;
+import com.scalar.db.benchmarks.ycsb.YcsbCommon.AttributeType;
 import com.scalar.db.config.DatabaseConfig;
 import com.scalar.db.exception.storage.ExecutionException;
 import com.scalar.db.io.DataType;
@@ -56,9 +55,6 @@ public class MultiUserAbacLoader extends PreProcessor {
     private final int loadConcurrency;
     private final int payloadSize;
     private final int userCount;
-    private final AttributeAssignmentStrategy attributeStrategy;
-    private final String[] attributeValues;
-    private final String attributeType;
     private final AtomicBoolean canceled = new AtomicBoolean(false);
     private final AtomicInteger numFinished = new AtomicInteger(0);
 
@@ -71,21 +67,7 @@ public class MultiUserAbacLoader extends PreProcessor {
         payloadSize = getPayloadSize(config);
         userCount = getUserCount(config);
 
-        this.attributeType = getAbacAttributeType(config);
-        this.attributeValues = getAbacAttributeValues(config);
-
-        // 属性割り当て戦略を初期化
-        String strategyName = getAbacStrategy(config);
-        if (STRATEGY_LOAD_BALANCED.equals(strategyName)) {
-            this.attributeStrategy = new LoadBalancedStrategy();
-        } else {
-            this.attributeStrategy = new RandomStrategy();
-        }
-
         logInfo("ABAC Multi-User Loader initialized:");
-        logInfo("  Attribute type: " + attributeType);
-        logInfo("  Strategy: " + strategyName);
-        logInfo("  Attribute values: " + String.join(", ", attributeValues));
         logInfo("  User count: " + userCount);
         logInfo("  Record count: " + recordCount);
     }
@@ -217,15 +199,8 @@ public class MultiUserAbacLoader extends PreProcessor {
             logInfo("Setting up ABAC environment...");
 
             // AbacAdminインスタンスを取得
-            try {
-                abacAdmin = Common.getAbacAdmin(config);
-                logInfo("AbacAdmin instance created successfully");
-            } catch (UnsupportedOperationException e) {
-                logWarn("AbacAdmin not available: " + e.getMessage());
-                logInfo("Using placeholder ABAC setup");
-                setupAbacPlaceholder();
-                return;
-            }
+            abacAdmin = Common.getAbacAdmin(config);
+            logInfo("AbacAdmin instance created successfully");
 
             // 1. ポリシーの作成
             String policyName = "ycsb_benchmark_policy";
@@ -246,17 +221,6 @@ public class MultiUserAbacLoader extends PreProcessor {
             logError("Failed to setup ABAC environment", e);
             throw new RuntimeException("ABAC setup failed", e);
         }
-    }
-
-    /**
-     * プレースホルダーABACセットアップ
-     */
-    private void setupAbacPlaceholder() {
-        String policyName = "ycsb_benchmark_policy";
-        logInfo("Would create ABAC policy: " + policyName);
-        logInfo("Would create ABAC attributes for type: " + attributeType);
-        logInfo("Would apply policy to table: " + NAMESPACE + "." + TABLE);
-        logInfo("ABAC environment setup completed (placeholder implementation)");
     }
 
     /**
@@ -285,16 +249,9 @@ public class MultiUserAbacLoader extends PreProcessor {
     private void createAbacAttributes(AbacAdmin abacAdmin, String policyName) throws ExecutionException {
         logInfo("Creating ABAC attributes for policy: " + policyName);
 
-        if ("level".equals(attributeType)) {
-            createLevelAttributes(abacAdmin, policyName);
-        } else if ("compartment".equals(attributeType)) {
-            createCompartmentAttributes(abacAdmin, policyName);
-        } else if ("group".equals(attributeType)) {
-            createGroupAttributes(abacAdmin, policyName);
-        } else {
-            logWarn("Unknown attribute type: " + attributeType + ", defaulting to level");
-            createLevelAttributes(abacAdmin, policyName);
-        }
+        createLevelAttributes(abacAdmin, policyName);
+        createCompartmentAttributes(abacAdmin, policyName);
+        createGroupAttributes(abacAdmin, policyName);
 
         logInfo("ABAC attributes created successfully");
     }
@@ -305,6 +262,7 @@ public class MultiUserAbacLoader extends PreProcessor {
     private void createLevelAttributes(AbacAdmin abacAdmin, String policyName) throws ExecutionException {
         logInfo("Creating level attributes");
 
+        String[] attributeValues = getAbacAttributeValues(AttributeType.ATTRIBUTE_TYPE_LEVEL);
         for (int i = 0; i < attributeValues.length; i++) {
             String shortName = attributeValues[i];
             String longName = "Level " + shortName;
@@ -326,6 +284,7 @@ public class MultiUserAbacLoader extends PreProcessor {
     private void createCompartmentAttributes(AbacAdmin abacAdmin, String policyName) throws ExecutionException {
         logInfo("Creating compartment attributes");
 
+        String[] attributeValues = getAbacAttributeValues(AttributeType.ATTRIBUTE_TYPE_COMPARTMENT);
         for (String attributeValue : attributeValues) {
             String shortName = attributeValue;
             String longName = "Compartment " + attributeValue;
@@ -346,6 +305,7 @@ public class MultiUserAbacLoader extends PreProcessor {
     private void createGroupAttributes(AbacAdmin abacAdmin, String policyName) throws ExecutionException {
         logInfo("Creating group attributes");
 
+        String[] attributeValues = getAbacAttributeValues(AttributeType.ATTRIBUTE_TYPE_GROUP);
         for (String attributeValue : attributeValues) {
             String shortName = attributeValue;
             String longName = "Group " + attributeValue;
@@ -390,31 +350,28 @@ public class MultiUserAbacLoader extends PreProcessor {
     private void assignAttributesToUsers(AbacAdmin abacAdmin, String policyName) throws ExecutionException {
         logInfo("Assigning attributes to users");
 
+        Random random = new Random();
+
         for (int i = 0; i < userCount; i++) {
             String username = getUserName(i);
-            String userAttribute = attributeStrategy.assignUserAttribute(i, attributeValues);
 
-            if ("level".equals(attributeType)) {
-                // レベル属性をユーザーに設定
-                abacAdmin.setLevelsToUser(policyName, username, userAttribute, userAttribute, userAttribute);
-                logInfo("Assigned level '" + userAttribute + "' to user: " + username);
-            } else if ("compartment".equals(attributeType)) {
-                // まずレベルを設定（コンパートメント使用の前提条件）
-                String defaultLevel = attributeValues[0];
-                abacAdmin.setLevelsToUser(policyName, username, defaultLevel, defaultLevel, defaultLevel);
-                // コンパートメントを追加
-                abacAdmin.addCompartmentToUser(policyName, username, userAttribute,
-                        AbacAdmin.AccessMode.READ_WRITE, true, true);
-                logInfo("Assigned compartment '" + userAttribute + "' to user: " + username);
-            } else if ("group".equals(attributeType)) {
-                // まずレベルを設定（グループ使用の前提条件）
-                String defaultLevel = attributeValues[0];
-                abacAdmin.setLevelsToUser(policyName, username, defaultLevel, defaultLevel, defaultLevel);
-                // グループを追加
-                abacAdmin.addGroupToUser(policyName, username, userAttribute,
-                        AbacAdmin.AccessMode.READ_WRITE, true, true);
-                logInfo("Assigned group '" + userAttribute + "' to user: " + username);
-            }
+            String userLevelString = getAbacAttributeValueRandom(AttributeType.ATTRIBUTE_TYPE_LEVEL, random);
+            String userCompartmentString = getAbacAttributeValueRandom(
+                    AttributeType.ATTRIBUTE_TYPE_COMPARTMENT, random);
+            String userGroupString = getAbacAttributeValueRandom(AttributeType.ATTRIBUTE_TYPE_GROUP, random);
+
+            abacAdmin.setLevelsToUser(policyName, username, userLevelString, userLevelString, userLevelString);
+            logInfo("Assigned level '" + userLevelString + "' to user: " + username);
+
+            abacAdmin.removeCompartmentFromUser(policyName, username, userCompartmentString);
+            abacAdmin.addCompartmentToUser(policyName, username, userCompartmentString,
+                    AbacAdmin.AccessMode.READ_WRITE, true, true);
+            logInfo("Assigned compartment '" + userCompartmentString + "' to user: " + username);
+
+            abacAdmin.removeGroupFromUser(policyName, username, policyName);
+            abacAdmin.addGroupToUser(policyName, username, userGroupString,
+                    AbacAdmin.AccessMode.READ_WRITE, true, true);
+            logInfo("Assigned group '" + userGroupString + "' to user: " + username);
         }
     }
 
@@ -482,20 +439,17 @@ public class MultiUserAbacLoader extends PreProcessor {
                     try {
                         // ABACではinsertを使用（putは使用不可）
                         // 各レコードに適切なdata_tagを生成
-                        String dataAttribute = attributeStrategy.assignDataAttribute(i, attributeValues);
-                        String dataTag;
+                        String dataLevelString = getAbacAttributeValueRandom(AttributeType.ATTRIBUTE_TYPE_LEVEL,
+                                random);
+                        String dataCompartmentString = getAbacAttributeValueRandom(
+                                AttributeType.ATTRIBUTE_TYPE_COMPARTMENT, random);
+                        String dataGroupString = getAbacAttributeValueRandom(AttributeType.ATTRIBUTE_TYPE_GROUP,
+                                random);
 
-                        // 属性タイプに応じてdata_tagを生成
-                        if ("level".equals(attributeType)) {
-                            dataTag = generateDataTag(dataAttribute, null, null);
-                        } else if ("compartment".equals(attributeType)) {
-                            dataTag = generateDataTag(null, new String[] { dataAttribute }, null);
-                        } else if ("group".equals(attributeType)) {
-                            dataTag = generateDataTag(null, null, new String[] { dataAttribute });
-                        } else {
-                            // デフォルトはlevel
-                            dataTag = generateDataTag(dataAttribute, null, null);
-                        }
+                        String dataTag = generateDataTag(
+                                dataLevelString,
+                                new String[] { dataCompartmentString },
+                                new String[] { dataGroupString });
 
                         tx.insert(prepareInsertWithDataTag(i, String.valueOf(payload), dataTag));
                         tx.commit();
@@ -549,25 +503,5 @@ public class MultiUserAbacLoader extends PreProcessor {
                 logWarn("Failed to close transaction manager for thread " + threadId);
             }
         }
-    }
-
-    /**
-     * ユーザーに属性を割り当てる
-     * 
-     * @param userId ユーザーID
-     * @return 割り当てられた属性値
-     */
-    public String assignUserAttribute(int userId) {
-        return attributeStrategy.assignUserAttribute(userId, attributeValues);
-    }
-
-    /**
-     * データレコードに属性を割り当てる
-     * 
-     * @param recordId レコードID
-     * @return 割り当てられた属性値
-     */
-    public String assignDataAttribute(int recordId) {
-        return attributeStrategy.assignDataAttribute(recordId, attributeValues);
     }
 }
