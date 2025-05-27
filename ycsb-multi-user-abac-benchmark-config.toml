@@ -21,12 +21,11 @@ realtime_report_enabled = true
 # マルチユーザーABACモードの設定
 user_count = 2           # 並行ユーザー数（スレッド数）
 record_count = 1000      # テーブル全体のレコード数
-ops_per_tx = 2           # トランザクションあたりの操作数（READ操作）
+ops_per_tx = 1           # トランザクションあたりの操作数（READ操作）
 load_concurrency = 1     # データロード時の並列度
 load_batch_size = 10     # バッチサイズ
 
 # ABAC Configuration
-abac_enabled = true
 abac_attribute_type = "level"
 abac_strategy = "random"
 abac_attribute_values = "public,confidential,secret"

@@ -34,7 +34,6 @@ import com.scalar.kelpie.modules.TimeBasedProcessor;
  */
 public class MultiUserWorkloadC extends TimeBasedProcessor {
     private static final long DEFAULT_OPS_PER_TX = 2; // two read operations
-    private final DistributedTransactionManager manager;
     private final int recordCount;
     private final int opsPerTx;
     private final int userCount;
@@ -52,9 +51,6 @@ public class MultiUserWorkloadC extends TimeBasedProcessor {
         this.recordCount = getRecordCount(config);
         this.opsPerTx = (int) config.getUserLong(CONFIG_NAME, OPS_PER_TX, DEFAULT_OPS_PER_TX);
         this.userCount = getUserCount(config);
-
-        // 管理者トランザクションマネージャー（バックアップとして）
-        this.manager = Common.getTransactionManager(config);
 
         // ScalarDBプロパティをコピーして各ユーザー用のトランザクションマネージャーを作成
         createUserManagers(config);
@@ -89,26 +85,23 @@ public class MultiUserWorkloadC extends TimeBasedProcessor {
             String username = getUserName(i);
             String password = getPassword(i);
 
-            try {
-                // ユーザー固有の認証情報でプロパティを作成
-                Properties userProps = new Properties();
-                userProps.putAll(baseProps);
-                userProps.setProperty("scalar.db.username", username);
-                userProps.setProperty("scalar.db.password", password);
+            // ユーザー固有の認証情報でプロパティを作成
+            Properties userProps = new Properties();
+            userProps.putAll(baseProps);
+            userProps.setProperty("scalar.db.username", username);
+            userProps.setProperty("scalar.db.password", password);
 
-                // トランザクションマネージャーの作成（標準的なTransactionFactory経由）
-                TransactionFactory factory = TransactionFactory.create(userProps);
-                DistributedTransactionManager userManager = factory.getTransactionManager();
-                userManagers.add(userManager);
+            // トランザクションマネージャーの作成（標準的なTransactionFactory経由）
+            TransactionFactory factory = TransactionFactory.create(userProps);
+            DistributedTransactionManager userManager = factory.getTransactionManager();
+            userManagers.add(userManager);
 
-                logInfo("Created transaction manager for user: " + username);
-            } catch (Exception e) {
-                logWarn("Failed to create transaction manager for user " + username + ": " + e.getMessage());
-            }
+            logInfo("Created transaction manager for user: " + username);
         }
 
         if (userManagers.isEmpty()) {
-            logWarn("No user transaction managers created, will use admin manager");
+            throw new IllegalStateException(
+                    "No user transaction managers created. Please check your configuration.");
         } else {
             logInfo("Created " + userManagers.size() + " user transaction managers");
         }
@@ -134,9 +127,8 @@ public class MultiUserWorkloadC extends TimeBasedProcessor {
         if (userIndex != null && userIndex < userManagers.size() && userManagers.get(userIndex) != null) {
             txManager = userManagers.get(userIndex);
         } else {
-            // ユーザーのトランザクションマネージャーが利用できない場合は管理者のを使用
-            txManager = manager;
-            logWarn("Using admin transaction manager for thread " + Thread.currentThread().getName());
+            throw new IllegalStateException(
+                    "No valid transaction manager found for thread " + Thread.currentThread().getName());
         }
 
         // トランザクションの実行
@@ -171,9 +163,6 @@ public class MultiUserWorkloadC extends TimeBasedProcessor {
                     logWarn("Failed to close user transaction manager", e);
                 }
             }
-
-            // 管理者トランザクションマネージャーを閉じる
-            manager.close();
         } catch (Exception e) {
             logWarn("Failed to close the transaction manager", e);
         }

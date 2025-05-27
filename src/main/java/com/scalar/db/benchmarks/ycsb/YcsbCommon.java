@@ -34,7 +34,6 @@ public class YcsbCommon {
   static final String PASSWORD_BASE = "password";
 
   // ABAC関連の設定パラメータ
-  static final String ABAC_ENABLED = "abac_enabled";
   static final String ABAC_ATTRIBUTE_TYPE = "abac_attribute_type";
   static final String ABAC_STRATEGY = "abac_strategy";
   static final String ABAC_ATTRIBUTE_VALUES = "abac_attribute_values";
@@ -188,10 +187,6 @@ public class YcsbCommon {
   }
 
   // ABAC設定取得メソッド
-  public static boolean isAbacEnabled(Config config) {
-    return config.getUserBoolean(CONFIG_NAME, ABAC_ENABLED, false);
-  }
-
   public static String getAbacAttributeType(Config config) {
     return config.getUserString(CONFIG_NAME, ABAC_ATTRIBUTE_TYPE, ATTRIBUTE_TYPE_LEVEL);
   }

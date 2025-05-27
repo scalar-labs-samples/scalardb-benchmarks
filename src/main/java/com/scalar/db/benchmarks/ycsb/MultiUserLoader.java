@@ -60,8 +60,6 @@ public class MultiUserLoader extends PreProcessor {
         userCount = getUserCount(config);
     }
 
-    private Exception error;
-
     @Override
     public void execute() {
         try {
@@ -76,7 +74,6 @@ public class MultiUserLoader extends PreProcessor {
 
             logInfo("Finished loading");
         } catch (Exception e) {
-            error = e;
             logError("loading error", e);
         }
 
@@ -144,7 +141,7 @@ public class MultiUserLoader extends PreProcessor {
         int numThreads = loadConcurrency;
         int recordsPerThread = recordCount / numThreads;
 
-        List<CompletableFuture> futures = new ArrayList<>();
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (int i = 0; i < numThreads; i++) {
             final int threadId = i;
             final int start = i * recordsPerThread;
@@ -156,13 +153,12 @@ public class MultiUserLoader extends PreProcessor {
         }
 
         CompletableFuture<Void> allFutures = CompletableFuture.allOf(
-                futures.toArray(new CompletableFuture[0]));
+                futures.toArray(new CompletableFuture<?>[0]));
 
         try {
             allFutures.join();
         } catch (Exception e) {
             canceled.set(true);
-            error = e;
             throw e;
         } finally {
             es.shutdown();

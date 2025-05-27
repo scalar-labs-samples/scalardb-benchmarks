@@ -47,8 +47,23 @@ public class YcsbReporter extends PostProcessor {
             + " ms\n"
             + "Transaction retry count: "
             + getPreviousState().getString("transaction-retry-count"));
+
+    // ABAC関連のメトリクスがある場合は追加表示
+    if (getPreviousState().getString("authorization-success-count") != null) {
+      StringBuilder abacReport = new StringBuilder();
+      abacReport.append("\n==== ABAC Authorization Summary ====\n")
+          .append("User count: ").append(getPreviousState().getString("user-count")).append("\n")
+          .append("Authorization success count: ").append(getPreviousState().getString("authorization-success-count"))
+          .append("\n")
+          .append("Authorization failure count: ").append(getPreviousState().getString("authorization-failure-count"))
+          .append("\n")
+          .append("Total authorization operations: ").append(getPreviousState().getString("total-operations"));
+
+      logInfo(abacReport.toString());
+    }
   }
 
   @Override
-  public void close() {}
+  public void close() {
+  }
 }
