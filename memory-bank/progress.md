@@ -32,13 +32,18 @@
   - ワークロードF (読取り-変更-書込み)
 - ✅ 複数名前空間（ycsb_primary, ycsb_secondary）へのバランスの取れた操作
 
-### マルチユーザー YCSB
+### ABACマルチユーザー YCSB ✅ 完全実装
 - ✅ ScalarDBユーザーの自動作成・権限付与機能
 - ✅ キー範囲分割による並列アクセス機能
 - ✅ ユーザー固有のトランザクションマネージャー管理
+- ✅ ABAC環境セットアップ（AbacAdmin API使用）
+- ✅ 属性ベースアクセス制御による権限チェック
 - ✅ ワークロードの実装
-  - ワークロードC (100%リード)
+  - ワークロードC (100%リード + ABAC権限チェック)
 - ✅ ユーザー数とレコード数の柔軟な設定
+- ✅ 詳細メトリクス（認証成功率、失敗率、デバッグ情報）
+
+**注意**: 通常のマルチユーザーYCSBは削除され、ABACマルチユーザーに統合されました。
 
 ### 設定と実行
 - ✅ TOML設定ファイルによるパラメータ指定
@@ -64,6 +69,25 @@
 - ⬜ 他のYCSBワークロードの実装（B、D、E）
 - ⬜ カスタムYCSBワークロードの定義機能
 - ⬜ マルチユーザーモードの他のワークロード対応（A、F）
+
+### ABACマルチユーザーベンチマーク（完全実装完了）
+- ✅ AttributeAssignmentStrategyインターフェースの実装
+- ✅ RandomStrategy（ランダム属性割り当て戦略）の実装
+- ✅ LoadBalancedStrategy（負荷分散属性割り当て戦略）の実装
+- ✅ MultiUserAbacWorkloadC（ABAC対応ワークロードC）の完全実装
+- ✅ MultiUserAbacLoader（ABAC対応ローダー）の完全実装
+- ✅ YcsbCommonへのABAC設定パラメータ追加
+- ✅ ycsb-multi-user-abac-benchmark-config.toml設定ファイルの作成
+- ✅ 全体的なビルドテスト完了（コンパイルエラー解決）
+- ✅ **本格実装完了**: AbacAdmin API使用の完全実装
+  - ✅ MultiUserAbacLoader.setupAbacEnvironment()メソッド: AbacAdmin APIを使用した完全実装
+    - ポリシー作成・有効化（createPolicy, enablePolicy）
+    - 属性定義作成（createLevel, createCompartment, createGroup）
+    - テーブルポリシー適用（createTablePolicy, enableTablePolicy）
+    - ユーザー属性割り当て（setLevelsToUser, addCompartmentToUser, addGroupToUser）
+  - ✅ MultiUserAbacWorkloadC.simulateAbacCheck()メソッド: ABAC権限チェック実装
+  - ✅ Common.getAbacAdmin()メソッド: AbacAdminインスタンス取得実装
+  - ✅ 実際のScalarDB ABAC機能との統合完了
 
 ### 拡張機能
 - ⬜ グラフィカルな結果レポート

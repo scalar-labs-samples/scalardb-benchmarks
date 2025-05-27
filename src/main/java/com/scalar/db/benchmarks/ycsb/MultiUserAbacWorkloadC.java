@@ -10,15 +10,18 @@ import static com.scalar.db.benchmarks.ycsb.YcsbCommon.prepareGet;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.LongAdder;
 
 import javax.json.Json;
+import javax.json.JsonObjectBuilder;
 
 import com.scalar.db.api.DistributedTransaction;
 import com.scalar.db.api.DistributedTransactionManager;
+import com.scalar.db.api.Result;
 import com.scalar.db.benchmarks.Common;
 import com.scalar.db.config.DatabaseConfig;
 import com.scalar.db.exception.transaction.CommitConflictException;
@@ -29,86 +32,79 @@ import com.scalar.kelpie.config.Config;
 import com.scalar.kelpie.modules.TimeBasedProcessor;
 
 /**
- * マルチユーザーモードのWorkload C: 複数ユーザー（スレッド）による並列読み取り。
- * 各スレッドに固有のキー範囲が割り当てられ、その範囲内からランダムに読み取りを行います。
+ * ABAC対応のマルチユーザーWorkload C: READ操作の許可/拒否パターンをベンチマーク
+ * 既存のMultiUserWorkloadCを拡張してABAC機能を追加
  */
-public class MultiUserWorkloadC extends TimeBasedProcessor {
+public class MultiUserAbacWorkloadC extends TimeBasedProcessor {
     private static final long DEFAULT_OPS_PER_TX = 2; // two read operations
-    private final DistributedTransactionManager manager;
     private final int recordCount;
     private final int opsPerTx;
     private final int userCount;
     private final ThreadLocal<KeyRange> threadLocalKeyRange;
 
+    // メトリクス
     private final LongAdder transactionRetryCount = new LongAdder();
+    private final LongAdder authorizationSuccessCount = new LongAdder();
+    private final LongAdder authorizationFailureCount = new LongAdder();
+    private final LongAdder transactionExecutionCount = new LongAdder();
+    private final LongAdder executeEachCallCount = new LongAdder();
 
-    // PASSWORD_BASE定数はYcsbCommonに移動しました
-    // 作成したユーザーごとにトランザクションマネージャーを保持
+    // ユーザー管理
     private final List<DistributedTransactionManager> userManagers = new ArrayList<>();
     private final ThreadLocal<Integer> threadLocalUserId;
 
-    public MultiUserWorkloadC(Config config) {
+    public MultiUserAbacWorkloadC(Config config) {
         super(config);
         this.recordCount = getRecordCount(config);
         this.opsPerTx = (int) config.getUserLong(CONFIG_NAME, OPS_PER_TX, DEFAULT_OPS_PER_TX);
         this.userCount = getUserCount(config);
 
-        // 管理者トランザクションマネージャー（バックアップとして）
-        this.manager = Common.getTransactionManager(config);
-
-        // ScalarDBプロパティをコピーして各ユーザー用のトランザクションマネージャーを作成
+        // ユーザー用のトランザクションマネージャーを作成
         createUserManagers(config);
 
-        // スレッドごとにキー範囲とユーザーIDを割り当てるためのThreadLocal変数
+        // スレッドローカル変数の初期化
         this.threadLocalUserId = new ThreadLocal<>();
         this.threadLocalKeyRange = ThreadLocal.withInitial(() -> {
-            // スレッドIDを取得（ハッシュコードを利用）
             int threadId = Math.abs(Thread.currentThread().getName().hashCode() % userCount);
-            // このスレッドのユーザーIDを保存
             threadLocalUserId.set(threadId);
-            // このスレッドのキー範囲を計算して返す
             return calculateKeyRange(threadId, userCount, recordCount);
         });
+
+        logInfo("ABAC Multi-User Workload C initialized:");
+        logInfo("  Record count: " + recordCount);
+        logInfo("  Ops per transaction: " + opsPerTx);
+        logInfo("  User count: " + userCount);
+        logInfo("  Concurrency: " + config.getConcurrency());
     }
 
     /**
-     * 各ユーザー用のトランザクションマネージャーを作成します。
-     * ScalarDB設定プロパティを用いて認証情報を渡します。
+     * 各ユーザー用のトランザクションマネージャーを作成
      */
     private void createUserManagers(Config config) {
-        // ScalarDBの設定を取得
         DatabaseConfig dbConfig = Common.getDatabaseConfig(config);
         Properties baseProps = dbConfig.getProperties();
 
-        // 接続情報をログ出力
         String contactPoints = baseProps.getProperty("scalar.db.contact_points", "");
         logInfo("Creating user managers for endpoint: " + contactPoints);
 
-        // 各ユーザー用のトランザクションマネージャーを作成
         for (int i = 0; i < userCount; i++) {
             String username = getUserName(i);
             String password = getPassword(i);
 
-            try {
-                // ユーザー固有の認証情報でプロパティを作成
-                Properties userProps = new Properties();
-                userProps.putAll(baseProps);
-                userProps.setProperty("scalar.db.username", username);
-                userProps.setProperty("scalar.db.password", password);
+            Properties userProps = new Properties();
+            userProps.putAll(baseProps);
+            userProps.setProperty("scalar.db.username", username);
+            userProps.setProperty("scalar.db.password", password);
 
-                // トランザクションマネージャーの作成（標準的なTransactionFactory経由）
-                TransactionFactory factory = TransactionFactory.create(userProps);
-                DistributedTransactionManager userManager = factory.getTransactionManager();
-                userManagers.add(userManager);
+            TransactionFactory factory = TransactionFactory.create(userProps);
+            DistributedTransactionManager userManager = factory.getTransactionManager();
+            userManagers.add(userManager);
 
-                logInfo("Created transaction manager for user: " + username);
-            } catch (Exception e) {
-                logWarn("Failed to create transaction manager for user " + username + ": " + e.getMessage());
-            }
+            logInfo("Created transaction manager for user: " + username);
         }
 
         if (userManagers.isEmpty()) {
-            logWarn("No user transaction managers created, will use admin manager");
+            throw new IllegalStateException("No user transaction managers were created. Check your configuration.");
         } else {
             logInfo("Created " + userManagers.size() + " user transaction managers");
         }
@@ -116,37 +112,47 @@ public class MultiUserWorkloadC extends TimeBasedProcessor {
 
     @Override
     public void executeEach() throws TransactionException {
-        // このスレッドに割り当てられたキー範囲を取得
+        executeEachCallCount.increment();
+
         KeyRange range = threadLocalKeyRange.get();
         Random random = ThreadLocalRandom.current();
 
-        // トランザクション内で実行する操作（GET）の対象キーをランダムに選択
+        // READ操作の対象キーをランダムに選択
         List<Integer> userIds = new ArrayList<>(opsPerTx);
         for (int i = 0; i < opsPerTx; ++i) {
-            // 割り当てられた範囲内からランダムにキーを選択
             int key = range.startKey + random.nextInt(range.endKey - range.startKey + 1);
             userIds.add(key);
         }
 
-        // このスレッドのユーザーIDに対応するトランザクションマネージャーを取得
+        // ユーザーのトランザクションマネージャーを取得
         Integer userIndex = threadLocalUserId.get();
         DistributedTransactionManager txManager;
         if (userIndex != null && userIndex < userManagers.size() && userManagers.get(userIndex) != null) {
             txManager = userManagers.get(userIndex);
         } else {
-            // ユーザーのトランザクションマネージャーが利用できない場合は管理者のを使用
-            txManager = manager;
-            logWarn("Using admin transaction manager for thread " + Thread.currentThread().getName());
+            throw new IllegalStateException("Invalid user index: " + userIndex + ". Check your configuration.");
         }
 
-        // トランザクションの実行
+        // トランザクション実行
         while (true) {
             DistributedTransaction transaction = txManager.start();
             try {
                 for (Integer userId : userIds) {
-                    transaction.get(prepareGet(userId));
+                    // 実際のREAD操作
+                    Optional<Result> result = transaction.get(prepareGet(userId));
+                    int threadId = threadLocalUserId.get();
+                    if (result.isPresent()) {
+                        // 認証成功のメトリクスを更新
+                        authorizationSuccessCount.increment();
+                        logDebug("AUTH_SUCCESS: ThreadID: " + threadId + ", userId: " + userId);
+                    } else {
+                        // 認証失敗のメトリクスを更新
+                        authorizationFailureCount.increment();
+                        logDebug("AUTH_FAILURE: ThreadID: " + threadId + ", userId: " + userId);
+                    }
                 }
                 transaction.commit();
+                transactionExecutionCount.increment();
                 break;
             } catch (CrudConflictException | CommitConflictException e) {
                 transaction.abort();
@@ -160,29 +166,41 @@ public class MultiUserWorkloadC extends TimeBasedProcessor {
 
     @Override
     public void close() {
-        try {
-            // 作成したすべてのユーザートランザクションマネージャーを閉じる
-            for (DistributedTransactionManager userManager : userManagers) {
+        Exception firstException = null;
+
+        // ユーザートランザクションマネージャーを閉じる
+        for (DistributedTransactionManager userManager : userManagers) {
+            if (userManager != null) {
                 try {
-                    if (userManager != null) {
-                        userManager.close();
-                    }
+                    userManager.close();
                 } catch (Exception e) {
-                    logWarn("Failed to close user transaction manager", e);
+                    if (firstException == null) {
+                        firstException = e;
+                    } else {
+                        firstException.addSuppressed(e);
+                    }
                 }
             }
-
-            // 管理者トランザクションマネージャーを閉じる
-            manager.close();
-        } catch (Exception e) {
-            logWarn("Failed to close the transaction manager", e);
         }
 
-        setState(
-                Json.createObjectBuilder()
-                        .add("transaction-retry-count", transactionRetryCount.toString())
-                        .add("user-count", String.valueOf(userCount))
-                        .build());
+        // メトリクスの出力
+        JsonObjectBuilder stateBuilder = Json.createObjectBuilder()
+                .add("transaction-retry-count", transactionRetryCount.toString())
+                .add("user-count", String.valueOf(userCount));
+        // 認証成功と失敗のカウントを追加
+        stateBuilder
+                .add("authorization-success-count", authorizationSuccessCount.toString())
+                .add("authorization-failure-count", authorizationFailureCount.toString())
+                .add("total-operations",
+                        String.valueOf(authorizationSuccessCount.sum() + authorizationFailureCount.sum()))
+                .add("transaction-execution-count", transactionExecutionCount.toString())
+                .add("execute-each-call-count", executeEachCallCount.toString());
+        setState(stateBuilder.build());
+
+        // 例外が発生していた場合は再スロー
+        if (firstException != null) {
+            throw new RuntimeException("Failed to close resources", firstException);
+        }
     }
 
     /**

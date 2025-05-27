@@ -4,6 +4,7 @@ import java.util.Random;
 
 import com.scalar.db.api.Consistency;
 import com.scalar.db.api.Get;
+import com.scalar.db.api.Insert;
 import com.scalar.db.api.Put;
 import com.scalar.db.io.Key;
 import com.scalar.db.io.TextColumn;
@@ -20,6 +21,7 @@ public class YcsbCommon {
   static final String TABLE = "usertable";
   static final String YCSB_KEY = "ycsb_key";
   static final String PAYLOAD = "payload";
+  static final String DATA_TAG = "data_tag";
   static final String CONFIG_NAME = "ycsb_config";
   static final String LOAD_CONCURRENCY = "load_concurrency";
   static final String LOAD_BATCH_SIZE = "load_batch_size";
@@ -27,9 +29,14 @@ public class YcsbCommon {
   static final String RECORD_COUNT = "record_count";
   static final String PAYLOAD_SIZE = "payload_size";
   static final String OPS_PER_TX = "ops_per_tx";
-  static final String USER_COUNT = "user_count"; // 新規追加: ユーザー数設定パラメータ
-  // マルチユーザー認証用の共通パスワードベース
+  static final String USER_COUNT = "user_count";
   static final String PASSWORD_BASE = "password";
+
+  // ABAC属性タイプの定数
+  static final String ATTRIBUTE_TYPE_LEVEL = "level";
+  static final String ATTRIBUTE_TYPE_COMPARTMENT = "compartment";
+  static final String ATTRIBUTE_TYPE_GROUP = "group";
+
   private static final int CHAR_START = 32; // [space]
   private static final int CHAR_STOP = 126; // [~]
   private static final char[] CHAR_SYMBOLS = new char[1 + CHAR_STOP - CHAR_START];
@@ -88,6 +95,38 @@ public class YcsbCommon {
         .build();
   }
 
+  public static Insert prepareInsert(int key, String payload) {
+    return prepareInsert(NAMESPACE, TABLE, key, payload);
+  }
+
+  public static Insert prepareInsert(String namespace, int key, String payload) {
+    return prepareInsert(namespace, TABLE, key, payload);
+  }
+
+  public static Insert prepareInsert(String namespace, String table, int key, String payload) {
+    return Insert.newBuilder()
+        .namespace(namespace)
+        .table(table)
+        .partitionKey(Key.ofInt(YCSB_KEY, key))
+        .value(TextColumn.of(PAYLOAD, payload))
+        .build();
+  }
+
+  public static Insert prepareInsertWithDataTag(int key, String payload, String dataTag) {
+    return prepareInsertWithDataTag(NAMESPACE, TABLE, key, payload, dataTag);
+  }
+
+  public static Insert prepareInsertWithDataTag(String namespace, String table, int key, String payload,
+      String dataTag) {
+    return Insert.newBuilder()
+        .namespace(namespace)
+        .table(table)
+        .partitionKey(Key.ofInt(YCSB_KEY, key))
+        .value(TextColumn.of(PAYLOAD, payload))
+        .value(TextColumn.of(DATA_TAG, dataTag))
+        .build();
+  }
+
   public static int getLoadConcurrency(Config config) {
     return (int) config.getUserLong(CONFIG_NAME, LOAD_CONCURRENCY, DEFAULT_LOAD_CONCURRENCY);
   }
@@ -108,7 +147,6 @@ public class YcsbCommon {
     return (int) config.getUserLong(CONFIG_NAME, PAYLOAD_SIZE, DEFAULT_PAYLOAD_SIZE);
   }
 
-  // 新規追加: ユーザー数（スレッド数）取得メソッド
   public static int getUserCount(Config config) {
     long userCount = config.getUserLong(CONFIG_NAME, USER_COUNT, 0L);
     if (userCount <= 0) {
@@ -136,6 +174,73 @@ public class YcsbCommon {
    */
   public static String getPassword(int index) {
     return PASSWORD_BASE + index;
+  }
+
+  public enum AttributeType {
+    ATTRIBUTE_TYPE_LEVEL,
+    ATTRIBUTE_TYPE_COMPARTMENT,
+    ATTRIBUTE_TYPE_GROUP
+  }
+
+  public static String[] getAbacAttributeValues(AttributeType attributeType) {
+    switch (attributeType) {
+      case ATTRIBUTE_TYPE_LEVEL:
+        return new String[] { "public", "confidential", "secret" };
+      case ATTRIBUTE_TYPE_COMPARTMENT:
+        return new String[] { "hr", "sales", "engineering" };
+      case ATTRIBUTE_TYPE_GROUP:
+        return new String[] { "team_a", "team_b", "team_c" };
+      default:
+        throw new IllegalArgumentException("Unknown attribute type: " + attributeType);
+    }
+  }
+
+  public static String getAbacAttributeValueRandom(AttributeType attributeType, Random rng) {
+    String[] values = getAbacAttributeValues(attributeType);
+    return values[rng.nextInt(values.length)];
+  }
+
+  /**
+   * ABAC用のdata_tagフォーマットを生成します
+   * フォーマット: level:compartments(カンマ区切り):groups(カンマ区切り)
+   * 例: 'public::', 'confidential:hr,sales:', 'secret:hr:team_a,team_b'
+   * 
+   * @param level        レベル属性（nullの場合は空文字）
+   * @param compartments コンパートメント属性のリスト（nullまたは空の場合は空文字）
+   * @param groups       グループ属性のリスト（nullまたは空の場合は空文字）
+   * @return 適切にフォーマットされたdata_tag文字列
+   */
+  public static String generateDataTag(String level, String[] compartments, String[] groups) {
+    StringBuilder sb = new StringBuilder();
+
+    // レベル部分
+    if (level != null && !level.isEmpty()) {
+      sb.append(level.toLowerCase());
+    }
+    sb.append(":");
+
+    // コンパートメント部分
+    if (compartments != null && compartments.length > 0) {
+      for (int i = 0; i < compartments.length; i++) {
+        if (i > 0) {
+          sb.append(",");
+        }
+        sb.append(compartments[i].toLowerCase());
+      }
+    }
+    sb.append(":");
+
+    // グループ部分
+    if (groups != null && groups.length > 0) {
+      for (int i = 0; i < groups.length; i++) {
+        if (i > 0) {
+          sb.append(",");
+        }
+        sb.append(groups[i].toLowerCase());
+      }
+    }
+
+    return sb.toString();
   }
 
   // This method is taken from benchbase.
