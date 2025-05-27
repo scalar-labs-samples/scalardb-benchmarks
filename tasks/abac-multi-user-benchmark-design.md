@@ -67,18 +67,17 @@ public class LoadBalancedStrategy {
 ### 3.2 設定例
 
 ```toml
-# ABAC基本設定
-[abac]
-enabled = true
-attribute_type = "level"  # level | compartment | group
-strategy = "random"       # random | load_balanced
-
-# 属性値定義
-attribute_values = ["public", "confidential", "secret"]
-
 # ベンチマーク設定
+[ycsb_config]
 user_count = 4
 record_count = 10000
+ops_per_tx = 2
+load_concurrency = 2
+
+# ABAC設定は実装内でハードコードされています
+# - 属性タイプ: level, compartment, group
+# - 属性値: ["public", "confidential", "secret"] など
+# - 戦略: random（ランダム割り当て）
 ```
 
 ## 4. 測定とメトリクス
@@ -90,15 +89,15 @@ record_count = 10000
 
 ### 4.2 測定例
 ```toml
-# 比較測定
-[baseline]
-abac_enabled = false
+# ABAC環境でのベンチマーク実行
+[ycsb_config]
+user_count = 4
+record_count = 10000
+ops_per_tx = 2
+load_concurrency = 2
 
-[abac_test]
-abac_enabled = true
-attribute_type = "level"
-strategy = "random"
-attribute_values = ["public", "confidential", "secret"]
+# ABAC設定は実装内で固定されています
+# 比較測定を行う場合は、ABAC無効環境と有効環境で別々に実行
 ```
 
 ## 5. まとめ

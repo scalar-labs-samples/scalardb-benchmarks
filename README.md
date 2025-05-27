@@ -11,7 +11,6 @@ ScalarDBのパフォーマンスを測定するための包括的なベンチマ
 - [ベンチマーク実行方法](#ベンチマーク実行方法)
   - [TPC-C ベンチマーク](#tpc-c-ベンチマーク)
   - [YCSB ベンチマーク](#ycsb-ベンチマーク)
-  - [マルチユーザー YCSB ベンチマーク](#マルチユーザー-ycsb-ベンチマーク)
   - [ABAC マルチユーザーベンチマーク](#abac-マルチユーザーベンチマーク)
 - [設定ファイル](#設定ファイル)
 - [トラブルシューティング](#トラブルシューティング)
@@ -20,13 +19,12 @@ ScalarDBのパフォーマンスを測定するための包括的なベンチマ
 
 ### 実装済みベンチマーク
 
-| ベンチマーク             | 説明                   | 用途                     |
-| ------------------------ | ---------------------- | ------------------------ |
-| **TPC-C**                | 完全なTPC-C実装        | OLTP性能評価             |
-| **YCSB**                 | ワークロードA、C、F    | NoSQL/分散DB評価         |
-| **マルチストレージYCSB** | 複数ストレージ環境     | マルチテナント評価       |
-| **マルチユーザーYCSB**   | 複数ユーザー並列実行   | スケーラビリティ評価     |
-| **ABACマルチユーザー**   | 属性ベースアクセス制御 | セキュリティ性能影響測定 |
+| ベンチマーク             | 説明                                         | 用途                                           |
+| ------------------------ | -------------------------------------------- | ---------------------------------------------- |
+| **TPC-C**                | 完全なTPC-C実装                              | OLTP性能評価                                   |
+| **YCSB**                 | ワークロードA、C、F                          | NoSQL/分散DB評価                               |
+| **マルチストレージYCSB** | 複数ストレージ環境                           | マルチテナント評価                             |
+| **ABACマルチユーザー**   | 属性ベースアクセス制御と複数ユーザー並列実行 | セキュリティ性能影響測定・スケーラビリティ評価 |
 
 ### 主要な特徴
 
@@ -143,17 +141,15 @@ scalar.db.password=admin
   --config=ycsb-benchmark-config.toml
 ```
 
-### マルチユーザー YCSB ベンチマーク
-
-```bash
-# マルチユーザー YCSB ベンチマーク実行
-/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home/bin/java \
-  -cp build/libs/scalardb-benchmarks-all.jar \
-  com.scalar.kelpie.Kelpie \
-  --config=ycsb-multi-user-benchmark-config.toml
-```
-
 ### ABAC マルチユーザーベンチマーク
+
+ABAC（属性ベースアクセス制御）環境でのマルチユーザーベンチマークです。複数のScalarDBユーザーが並列でアクセスし、属性ベースの権限チェックによる性能影響を測定します。
+
+**特徴:**
+- 複数ユーザーによる並列実行（スケーラビリティテスト）
+- 属性ベースアクセス制御による権限チェック
+- READ操作の許可/拒否パターンの分析
+- 詳細なメトリクス（認証成功率、失敗率、スループット）
 
 ```bash
 # ABAC マルチユーザーベンチマーク実行
@@ -195,11 +191,10 @@ record_count = 10000     # レコード数
 ops_per_tx = 2           # トランザクションあたりの操作数
 load_concurrency = 2     # データロード時の並列度
 
-# ABAC設定
-abac_enabled = true
-abac_attribute_type = "level"  # level | compartment | group
-abac_strategy = "random"       # random | load_balanced
-abac_attribute_values = "public,confidential,secret"
+# ABAC設定は実装内でハードコードされています
+# - 属性タイプ: level, compartment, group
+# - 属性値: public, confidential, secret など
+# - 戦略: random（ランダム割り当て）
 
 [database_config]
 config_file = "scalardb.properties"
@@ -207,16 +202,15 @@ config_file = "scalardb.properties"
 
 ### 主要パラメータ
 
-| パラメータ            | 説明                       | デフォルト値      |
-| --------------------- | -------------------------- | ----------------- |
-| `concurrency`         | 並行実行スレッド数         | 1                 |
-| `run_for_sec`         | ベンチマーク実行時間（秒） | 60                |
-| `ramp_for_sec`        | ウォームアップ時間（秒）   | 10                |
-| `user_count`          | ScalarDBユーザー数         | concurrencyと同じ |
-| `record_count`        | テーブル内のレコード数     | 1000              |
-| `abac_enabled`        | ABAC機能の有効/無効        | false             |
-| `abac_attribute_type` | 属性タイプ                 | "level"           |
-| `abac_strategy`       | 属性割り当て戦略           | "random"          |
+| パラメータ         | 説明                           | デフォルト値      |
+| ------------------ | ------------------------------ | ----------------- |
+| `concurrency`      | 並行実行スレッド数             | 1                 |
+| `run_for_sec`      | ベンチマーク実行時間（秒）     | 60                |
+| `ramp_for_sec`     | ウォームアップ時間（秒）       | 10                |
+| `user_count`       | ScalarDBユーザー数             | concurrencyと同じ |
+| `record_count`     | テーブル内のレコード数         | 1000              |
+| `ops_per_tx`       | トランザクションあたりの操作数 | 2                 |
+| `load_concurrency` | データロード時の並列度         | 1                 |
 
 ## トラブルシューティング
 

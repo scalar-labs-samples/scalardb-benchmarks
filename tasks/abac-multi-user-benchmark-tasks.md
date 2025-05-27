@@ -1,7 +1,9 @@
 # ABACマルチユーザーベンチマーク実装タスクリスト
 
 ## 概要
-ScalarDBのABAC機能による性能影響を測定するため、READ操作の許可/拒否パターンを2つの戦略でベンチマークする。
+ScalarDBのABAC機能による性能影響を測定するため、READ操作の許可/拒否パターンをベンチマークする。
+
+**注意**: MultiUserモードは削除され、ABACマルチユーザーモードに統合されました。ABACモードが複数ユーザーによる並列実行とスケーラビリティテストの両方をサポートします。
 
 **前提条件**: 
 - ScalarDB Cluster側でABACが有効化済み
@@ -67,9 +69,7 @@ ScalarDBのABAC機能による性能影響を測定するため、READ操作の�
 user_count = 2
 record_count = 1000
 ops_per_tx = 1
-abac_attribute_type = "level"
-abac_strategy = "random"
-abac_attribute_values = "public,confidential,secret"
+# ABAC設定は実装内でハードコードされています
 ```
 
 ### 属性戦略実装例

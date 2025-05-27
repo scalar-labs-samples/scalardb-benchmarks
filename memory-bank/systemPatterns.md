@@ -35,13 +35,13 @@ ScalarDBベンチマークツールは、[Kelpie](https://github.com/scalar-labs
    - TpccLoader: TPC-Cのテーブルにデータを投入
    - Loader: YCSBのデータを生成・投入
    - MultiStorageLoader: 複数ストレージ向けのデータを生成・投入
-   - MultiUserLoader: マルチユーザーモード用のユーザー作成とデータロード
+   - MultiUserAbacLoader: ABACマルチユーザーモード用のユーザー作成、ABAC環境セットアップ、データロード
 
 2. **プロセッサ**: 実際のベンチマーク処理を実行
    - TpccBench: TPC-Cワークロードの実行
    - WorkloadA/C/F: YCSBの各ワークロードの実行
    - MultiStorageWorkloadC/F: 複数ストレージのYCSBワークロード実行
-   - MultiUserWorkloadC: 複数ユーザーによる並列読み取りワークロード
+   - MultiUserAbacWorkloadC: ABAC環境での複数ユーザーによる並列読み取りワークロード（権限チェック付き）
 
 3. **ポストプロセッサ**: 結果集計とレポート生成
    - TpccReporter: TPC-Cの実行結果を集計・レポート
@@ -55,7 +55,7 @@ ScalarDBベンチマークツールは、[Kelpie](https://github.com/scalar-labs
 - TPC-C関連クラス群
 - YCSB関連クラス群
 - マルチストレージYCSB関連クラス群
-- マルチユーザーYCSB関連クラス群
+- ABACマルチユーザーYCSB関連クラス群
 
 各モジュールは独立して動作し、共通インターフェースや基底クラスを実装しています。
 
