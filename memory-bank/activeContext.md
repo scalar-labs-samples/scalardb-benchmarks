@@ -37,7 +37,15 @@ ScalarDBベンチマークツールは、データベースのパフォーマン
 ## 最新の更新
 
 ### 完了した項目（2025/5/29）
-1. **Datadog APM統合機能の実装完了**
+1. **設定別動的Datadogタグ機能の実装完了** ✅ 新規追加
+   - 各ベンチマーク設定（min/mid/max）に対して異なるDatadogタグを自動生成・適用
+   - 設定ファイル解析機能（extract_config_params, get_config_level等）
+   - 動的タグ生成ロジック（benchmark_config, load_level, user_count_level等）
+   - configure_datadog_options_for_config()関数でタグ付きAPMオプション生成
+   - run_benchmark()関数修正で設定別タグ適用
+   - ドキュメント更新（タグ例とロジック説明追加）
+
+2. **Datadog APM統合機能の実装完了**
    - run-abac-benchmarks-all.shスクリプトにDatadog APM統合オプションを追加
    - コマンドラインオプション（--enable-datadog-apm, --datadog-service, --datadog-env等）
    - 環境変数による設定サポート

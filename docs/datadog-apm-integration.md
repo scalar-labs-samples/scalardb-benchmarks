@@ -77,6 +77,55 @@ APM有効時に自動的に設定されるJavaシステムプロパティ：
 - wget/curlが利用できない場合、手動ダウンロードの指示を表示
 - ダウンロード失敗時の適切なエラーメッセージ
 
+## 設定別動的タグ機能
+
+各ベンチマーク設定（min、mid、max）に対して、自動的に異なるDatadogタグが生成・適用されます：
+
+### 生成されるタグ例
+
+**MIN設定時：**
+```
+benchmark_config:min
+load_level:minimal
+user_count_level:low
+user_count:2
+concurrency:1
+duration:300
+benchmark_type:abac
+benchmark_suite:scalardb
+```
+
+**MID設定時：**
+```
+benchmark_config:mid
+load_level:moderate
+user_count_level:medium
+user_count:10
+concurrency:5
+duration:600
+benchmark_type:abac
+benchmark_suite:scalardb
+```
+
+**MAX設定時：**
+```
+benchmark_config:max
+load_level:intensive
+user_count_level:high
+user_count:50
+concurrency:25
+duration:900
+benchmark_type:abac
+benchmark_suite:scalardb
+```
+
+### タグの自動判定ロジック
+
+- **設定レベル**: ファイル名から自動判定（min/mid/max）
+- **負荷レベル**: 設定レベルに基づく（minimal/moderate/intensive）
+- **ユーザー数レベル**: 実際のuser_count値に基づく（≤5:low, ≤20:medium, >20:high）
+- **実測値**: 設定ファイルから抽出される実際のパラメータ値
+
 ## ABAC ベンチマークでの活用
 
 ABAC（Attribute-Based Access Control）環境でのベンチマーク実行時に、以下の詳細な分析が可能になります：
@@ -85,6 +134,8 @@ ABAC（Attribute-Based Access Control）環境でのベンチマーク実行時�
 - ABAC有効/無効時のパフォーマンス比較
 - マルチユーザー環境でのスケーラビリティ分析
 - ScalarDB固有の処理パターンの可視化
+- **設定レベル別のパフォーマンス比較とトレンド分析**
+- **負荷レベルごとのリソース使用状況の可視化**
 
 ## 出力例
 

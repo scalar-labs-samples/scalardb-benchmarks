@@ -157,7 +157,109 @@ setup_datadog_agent() {
     return 0
 }
 
-# Datadog APMオプションの構成
+# 設定ファイルからパラメータを抽出
+extract_config_params() {
+    local config_file=$1
+    local param_name=$2
+    
+    if [[ -f "$config_file" ]]; then
+        grep "$param_name" "$config_file" | grep -oE '[0-9]+' | head -1
+    else
+        echo "N/A"
+    fi
+}
+
+# 設定レベルを判定
+get_config_level() {
+    local config_file=$1
+    
+    case "$config_file" in
+        *"min"*) echo "min" ;;
+        *"mid"*) echo "mid" ;;
+        *"max"*) echo "max" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
+# 負荷レベルを判定
+get_load_level() {
+    local config_level=$1
+    
+    case "$config_level" in
+        "min") echo "minimal" ;;
+        "mid") echo "moderate" ;;
+        "max") echo "intensive" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
+# ユーザー数レベルを判定
+get_user_count_level() {
+    local user_count=$1
+    
+    if [[ "$user_count" == "N/A" ]]; then
+        echo "unknown"
+    elif [[ $user_count -le 5 ]]; then
+        echo "low"
+    elif [[ $user_count -le 20 ]]; then
+        echo "medium"
+    else
+        echo "high"
+    fi
+}
+
+# Datadog APMオプションの構成（設定別タグ対応）
+configure_datadog_options_for_config() {
+    local config_file=$1
+    
+    if [[ "$DATADOG_APM_ENABLED" != "true" ]]; then
+        return 0
+    fi
+    
+    local datadog_opts=""
+    datadog_opts="$datadog_opts -javaagent:$DATADOG_AGENT_PATH"
+    datadog_opts="$datadog_opts -Ddd.service=$DATADOG_SERVICE"
+    datadog_opts="$datadog_opts -Ddd.env=$DATADOG_ENV"
+    
+    if [[ "$DATADOG_LOGS_INJECTION" == "true" ]]; then
+        datadog_opts="$datadog_opts -Ddd.logs.injection=true"
+    fi
+    
+    # 設定ファイルから動的にタグを生成
+    local config_level=$(get_config_level "$config_file")
+    local user_count=$(extract_config_params "$config_file" "user_count")
+    local concurrency=$(extract_config_params "$config_file" "concurrency")
+    local run_duration=$(extract_config_params "$config_file" "run_for_sec")
+    local load_level=$(get_load_level "$config_level")
+    local user_count_level=$(get_user_count_level "$user_count")
+    
+    # 動的タグの構成
+    local tags="benchmark_config:$config_level,load_level:$load_level,user_count_level:$user_count_level"
+    
+    if [[ "$user_count" != "N/A" ]]; then
+        tags="$tags,user_count:$user_count"
+    fi
+    if [[ "$concurrency" != "N/A" ]]; then
+        tags="$tags,concurrency:$concurrency"
+    fi
+    if [[ "$run_duration" != "N/A" ]]; then
+        tags="$tags,duration:$run_duration"
+    fi
+    
+    # ベンチマークタイプの追加
+    tags="$tags,benchmark_type:abac,benchmark_suite:scalardb"
+    
+    datadog_opts="$datadog_opts -Ddd.tags=$tags"
+    
+    # 追加のDatadog設定
+    datadog_opts="$datadog_opts -Ddd.profiling.enabled=true"
+    datadog_opts="$datadog_opts -XX:FlightRecorderOptions=stackdepth=256"
+    datadog_opts="$datadog_opts -Ddd.trace.enabled=true"
+    
+    echo "$datadog_opts"
+}
+
+# 基本的なDatadog APMオプションの構成（後方互換性用）
 configure_datadog_options() {
     if [[ "$DATADOG_APM_ENABLED" != "true" ]]; then
         return 0
@@ -171,6 +273,9 @@ configure_datadog_options() {
     if [[ "$DATADOG_LOGS_INJECTION" == "true" ]]; then
         datadog_opts="$datadog_opts -Ddd.logs.injection=true"
     fi
+    
+    # 基本タグ（設定不明時）
+    datadog_opts="$datadog_opts -Ddd.tags=benchmark_type:abac,benchmark_suite:scalardb,config:general"
     
     # 追加のDatadog設定
     datadog_opts="$datadog_opts -Ddd.profiling.enabled=true"
@@ -203,7 +308,7 @@ create_results_dir() {
     fi
 }
 
-# ベンチマーク実行関数
+# ベンチマーク実行関数（設定別Datadogタグ対応）
 run_benchmark() {
     local config_file=$1
     local result_file=$2
@@ -212,6 +317,28 @@ run_benchmark() {
     log_info "=== $description の実行を開始します ==="
     log_info "設定ファイル: $config_file"
     log_info "結果ファイル: $result_file"
+    
+    # 物理メモリサイズを取得
+    local mem_kb=$(get_memory_size)
+    local heap_size=$(calculate_heap_size $mem_kb)
+    local base_opts="-Xmx$heap_size -Xms$heap_size"
+    
+    # 設定ファイル別のDatadogオプションを適用
+    local config_specific_datadog_opts=$(configure_datadog_options_for_config "$config_file")
+    
+    if [[ -n "$config_specific_datadog_opts" ]]; then
+        export JAVA_OPTS="$base_opts $config_specific_datadog_opts"
+        log_info "設定別JAVA_OPTS: $JAVA_OPTS"
+        
+        # タグ情報の表示
+        local config_level=$(get_config_level "$config_file")
+        local user_count=$(extract_config_params "$config_file" "user_count")
+        local load_level=$(get_load_level "$config_level")
+        log_info "Datadogタグ: config=$config_level, load=$load_level, users=$user_count"
+    else
+        export JAVA_OPTS="$base_opts"
+        log_info "標準JAVA_OPTS: $JAVA_OPTS"
+    fi
     
     # Kelpieでベンチマーク実行
     if ./kelpie/bin/kelpie --config "$config_file" > "$result_file" 2>&1; then
