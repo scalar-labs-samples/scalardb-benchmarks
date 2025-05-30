@@ -1,0 +1,29 @@
+[modules]
+[modules.preprocessor]
+name = "com.scalar.db.benchmarks.ycsb.MultiUserAbacLoader"
+path = "./build/libs/scalardb-benchmarks-all.jar"
+[modules.processor]
+name = "com.scalar.db.benchmarks.ycsb.MultiUserAbacWorkloadC"
+path = "./build/libs/scalardb-benchmarks-all.jar"
+[modules.postprocessor]
+name = "com.scalar.db.benchmarks.ycsb.YcsbReporter"
+path = "./build/libs/scalardb-benchmarks-all.jar"
+
+[common]
+concurrency = 64
+run_for_sec = 60
+ramp_for_sec = 10
+
+[stats]
+realtime_report_enabled = true
+
+[ycsb_config]
+record_count = 1000   # テーブル全体のレコード数
+ops_per_tx = 2        # トランザクションあたりの操作数（READ操作）
+load_concurrency = 64 # データロード時の並列度
+load_batch_size = 10  # バッチサイズ
+# マルチユーザーABACモードの設定
+user_count = 64 # 並行ユーザー数（concurrencyにも同じ値をセットする）
+
+[database_config]
+config_file = "scalardb.properties"
